@@ -14,7 +14,8 @@ import Settings from "@/components/Settings";
 import Customers from "@/components/Customers";
 import ImportData from "@/components/ImportData";
 import StaffManagement from "@/components/StaffManagement";
-import { Menu, Calendar, Briefcase, DollarSign, SettingsIcon, Users, Upload, LogOut, Moon, Sun, RefreshCw, UserCog } from "lucide-react";
+import AuditLogs from "@/components/AuditLogs";
+import { Menu, Calendar, Briefcase, DollarSign, SettingsIcon, Users, Upload, LogOut, Moon, Sun, RefreshCw, UserCog, FileText } from "lucide-react";
 import { useTheme } from "./context/ThemeContext";
 
 
