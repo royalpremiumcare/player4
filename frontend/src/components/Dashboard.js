@@ -296,8 +296,8 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
         </Card>
       )}
 
-      {/* Filtreler (Admin için) */}
-      {staffMembers.length > 0 && (
+      {/* Filtreler (Sadece Admin için) */}
+      {userRole === 'admin' && staffMembers.length > 0 && (
         <Card className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
           <div className="flex items-center gap-2 mb-3">
             <Filter className="w-4 h-4 text-purple-600" />
