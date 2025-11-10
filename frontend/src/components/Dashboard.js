@@ -196,6 +196,16 @@ const Dashboard = ({ appointments, stats, onEditAppointment, onNewAppointment, o
 
   return (
     <div className="space-y-6">
+      {/* Tarih Bilgisi - EN ÜSTTE */}
+      <div className="text-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200">
+        <h2 className="text-2xl md:text-3xl font-bold text-gray-900" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+          {format(new Date(), "d MMMM yyyy, EEEE", { locale: tr })}
+        </h2>
+        {currentUserFullName && (
+          <p className="text-sm text-blue-600 mt-1">Hoş geldiniz, {currentUserFullName}</p>
+        )}
+      </div>
+
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -224,10 +234,8 @@ const Dashboard = ({ appointments, stats, onEditAppointment, onNewAppointment, o
       {/* Header with Add Button and Menu */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-            {format(new Date(), "d MMMM yyyy, EEEE", { locale: tr })}
-          </h2>
-          <p className="text-sm text-gray-600 mt-1">Randevularınızı yönetin</p>
+          <h3 className="text-xl font-bold text-gray-900">Randevularınızı Yönetin</h3>
+          <p className="text-sm text-gray-600 mt-1">Filtreleyerek arama yapabilirsiniz</p>
         </div>
         <div className="flex gap-2">
           <Button
