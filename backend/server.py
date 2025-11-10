@@ -1178,6 +1178,10 @@ async def delete_customer(request: Request, phone: str, current_user: UserInDB =
     
     # Müşterinin tüm randevularını sil
     query = {"phone": phone, "organization_id": current_user.organization_id}
+    
+    # Get appointments before deleting (for audit log)
+    appointments_to_delete = await db.appointments.find(query, {"_id": 0}).to_list(1000)
+    
     result = await db.appointments.delete_many(query)
     
     if result.deleted_count == 0:
@@ -1185,6 +1189,19 @@ async def delete_customer(request: Request, phone: str, current_user: UserInDB =
     
     # Transaction'ları da sil (eğer varsa)
     await db.transactions.delete_many(query)
+    
+    # Audit log
+    await create_audit_log(
+        db=db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.username,
+        user_full_name=current_user.full_name or current_user.username,
+        action="DELETE",
+        resource_type="CUSTOMER",
+        resource_id=phone,
+        old_value={"phone": phone, "appointments": appointments_to_delete, "count": result.deleted_count},
+        ip_address=request.client.host if request.client else None
+    )
     
     return {"message": f"Müşteri ve {result.deleted_count} randevu silindi", "deleted_appointments": result.deleted_count}
 
