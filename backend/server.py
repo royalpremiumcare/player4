@@ -243,6 +243,30 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
     return user
 
 # --- SMS FONKSİYONU (Aynı kaldı) ---
+def build_sms_message(template: str, company_name: str, customer_name: str, date: str, time: str, service: str, support_phone: str, custom_text: str = "") -> str:
+    """SMS şablonunu doldurur. Zorunlu alanlar silinemez."""
+    # Default template yoksa standart mesaj
+    if not template:
+        base = f"Sayın {customer_name},\n\n{company_name} randevunuz:\n{date} - {time}\nHizmet: {service}\n\n"
+        if custom_text:
+            base += f"{custom_text}\n\n"
+        base += f"Bilgi: {support_phone}"
+        return base
+    
+    # Template'i doldur (özelleştirilebilir alan varsa ekle)
+    message = template
+    message = message.replace("{MUSTERI_ADI}", customer_name)
+    message = message.replace("{ISLETME_ADI}", company_name)
+    message = message.replace("{TARIH}", date)
+    message = message.replace("{SAAT}", time)
+    message = message.replace("{HIZMET}", service)
+    message = message.replace("{TELEFON}", support_phone)
+    
+    if custom_text and "{OZEL_MESAJ}" in message:
+        message = message.replace("{OZEL_MESAJ}", custom_text)
+    
+    return message
+
 def send_sms(to_phone: str, message: str):
     try:
         if not SMS_ENABLED: logging.info("SMS sending is disabled via SMS_ENABLED env. Skipping."); return True
