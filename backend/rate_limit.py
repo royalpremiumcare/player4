@@ -1,6 +1,7 @@
 """
 Rate Limiting Module
 (Düzeltilmiş versiyon: limits==5.6.0 ve REDIS_URL ile uyumlu)
+(Düzeltme 2: 'initialize_limiter' artık 'limiter' nesnesini return ediyor)
 """
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -25,18 +26,18 @@ def initialize_limiter(redis_client):
     if not RATE_LIMIT_ENABLED:
         logger.info("Rate limiting is disabled by ENV.")
         limiter.storage = None
-        return
+        return limiter # <-- YENİ: 'None' bile olsa limiter'ı döndür
 
     # redis_client parametresi VDS'de artık gerekli değil,
     # .env dosyasındaki REDIS_URL'yi kullanacağız.
-    
+
     try:
         # VDS .env dosyasından REDIS_URL'yi al
         redis_url = os.environ.get('REDIS_URL')
         if not redis_url:
             logger.warning("REDIS_URL environment variable is not set. Disabling rate limiter.")
             limiter.storage = None
-            return
+            return limiter # <-- YENİ: Limiter'ı döndür
 
         # 'limits' kütüphanesinin URL'den (string'den) async depolama
         # oluşturmasını sağlayan, sürümden bağımsız güvenli yöntem:
@@ -51,6 +52,8 @@ def initialize_limiter(redis_client):
     except Exception as e:
         logger.error(f"Failed to create Limiter storage: {e}.")
         limiter.storage = None
+    
+    return limiter # <-- YENİ: Yapılandırılmış limiter'ı döndür
 
 # Rate limit decorator'ı
 def rate_limit(times: str = "10/minute", per_method: bool = True):

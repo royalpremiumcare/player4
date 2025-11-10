@@ -113,3 +113,19 @@ code {
         border-bottom-color: inherit;
     }
 }
+/*
+ * MOBİL ZOOM ENGELLEME KODU
+ * iPhone/Safari'nin 16px'den küçük fontlara sahip input'lara
+ * otomatik zoom yapmasını engeller.
+*/
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="tel"],
+input[type="search"],
+input[type="url"],
+textarea,
+select {
+    font-size: 16px !important;
+}
