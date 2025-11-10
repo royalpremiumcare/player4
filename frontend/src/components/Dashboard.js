@@ -88,6 +88,15 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
       console.error("Kullanıcı bilgisi yüklenemedi:", error);
     }
   };
+
+  const loadSettings = async () => {
+    try {
+      const response = await api.get("/settings");
+      setSettings(response.data);
+    } catch (error) {
+      console.error("Ayarlar yüklenemedi:", error);
+    }
+  };
   
   const getStaffName = (staffId) => {
     if (!staffId) return "Atanmadı";
