@@ -348,8 +348,10 @@ async def register_user(request: Request, user_in: UserCreate, db = Depends(get_
     )
     await db.settings.insert_one(default_settings.model_dump())
     
-    # Sektör bazlı default services ekle
+    # Sektör bazlı default services ekle ve admin'e ata
     sector = getattr(user_in, 'sector', None)
+    service_ids = []
+    
     if sector and sector != "Diğer/Boş":
         sector_services = {
             "Kuaför": [
@@ -388,12 +390,21 @@ async def register_user(request: Request, user_in: UserCreate, db = Depends(get_
         
         services_to_add = sector_services.get(sector, [])
         for service_data in services_to_add:
+            service_id = str(uuid.uuid4())
             service = Service(
-                id=str(uuid.uuid4()),
+                id=service_id,
                 organization_id=new_org_id,
                 **service_data
             )
             await db.services.insert_one(service.model_dump())
+            service_ids.append(service_id)
+    
+    # Admin'e tüm hizmetleri ata
+    if service_ids:
+        await db.users.update_one(
+            {"username": user_in.username},
+            {"$set": {"permitted_service_ids": service_ids}}
+        )
     
     return User(**user_db.model_dump())
 
