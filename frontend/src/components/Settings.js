@@ -228,6 +228,85 @@ const Settings = () => {
                 </p>
               </div>
             </div>
+
+            {/* SMS Metinlerini Özelleştir */}
+            <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-teal-50 rounded-lg border border-green-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">SMS Metinlerini Özelleştir</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                ⚠️ İletimerkezi karakter sınırı: <strong>Max 160 karakter</strong>
+              </p>
+              <p className="text-xs text-amber-600 mb-4">
+                🔒 Zorunlu alanlar otomatik eklenir ve silinemez: İşletme Adı, Tarih, Saat, Hizmet, Telefon
+              </p>
+              
+              {/* Randevu Onay SMS */}
+              <div className="space-y-2 mb-4">
+                <Label>Randevu Onay SMS Metni (Opsiyonel)</Label>
+                <textarea
+                  placeholder="Boş bırakırsanız standart mesaj kullanılır"
+                  value={settings.sms_confirmation_template || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val.length <= 160) {
+                      setSettings({ ...settings, sms_confirmation_template: val });
+                    }
+                  }}
+                  className="w-full px-3 py-2 border rounded-md min-h-[80px] text-sm"
+                  maxLength={160}
+                />
+                <p className="text-xs text-gray-500">
+                  {(settings.sms_confirmation_template || "").length}/160 karakter
+                </p>
+              </div>
+
+              {/* İptal SMS */}
+              <div className="space-y-2 mb-4">
+                <Label>Randevu İptal SMS Metni (Opsiyonel)</Label>
+                <textarea
+                  placeholder="Boş bırakırsanız standart mesaj kullanılır"
+                  value={settings.sms_cancellation_template || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val.length <= 160) {
+                      setSettings({ ...settings, sms_cancellation_template: val });
+                    }
+                  }}
+                  className="w-full px-3 py-2 border rounded-md min-h-[80px] text-sm"
+                  maxLength={160}
+                />
+                <p className="text-xs text-gray-500">
+                  {(settings.sms_cancellation_template || "").length}/160 karakter
+                </p>
+              </div>
+
+              {/* Tamamlanma SMS */}
+              <div className="space-y-2">
+                <Label>Hizmet Tamamlanma SMS Metni (Opsiyonel)</Label>
+                <textarea
+                  placeholder="Boş bırakırsanız standart mesaj kullanılır"
+                  value={settings.sms_completion_template || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val.length <= 160) {
+                      setSettings({ ...settings, sms_completion_template: val });
+                    }
+                  }}
+                  className="w-full px-3 py-2 border rounded-md min-h-[80px] text-sm"
+                  maxLength={160}
+                />
+                <p className="text-xs text-gray-500">
+                  {(settings.sms_completion_template || "").length}/160 karakter
+                </p>
+              </div>
+
+              <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
+                <p className="text-xs text-blue-700">
+                  💡 <strong>Varsayılan Mesaj Örneği:</strong><br/>
+                  "Sayın [Müşteri], [İşletme] randevunuz onaylandı. Tarih: [Tarih] Saat: [Saat] Hizmet: [Hizmet] Bilgi: [Telefon]"
+                </p>
+              </div>
+            </div>
+          </div>
             
             {/* Logo Upload */}
             <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
