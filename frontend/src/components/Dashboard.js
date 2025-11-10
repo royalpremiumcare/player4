@@ -94,7 +94,7 @@ const Dashboard = ({ appointments, stats, onEditAppointment, onNewAppointment, o
 
   useEffect(() => {
     filterAppointments();
-  }, [appointments, view, searchTerm]);
+  }, [appointments, view, searchTerm, selectedStaffFilter, selectedServiceFilter]);
 
   const filterAppointments = () => {
     let filtered = [...appointments];
@@ -107,6 +107,16 @@ const Dashboard = ({ appointments, stats, onEditAppointment, onNewAppointment, o
           apt.phone.includes(searchTerm) ||
           apt.service_name.toLowerCase().includes(searchTerm.toLowerCase())
       );
+    }
+
+    // Staff filter
+    if (selectedStaffFilter !== "all") {
+      filtered = filtered.filter((apt) => apt.staff_member_id === selectedStaffFilter);
+    }
+
+    // Service filter
+    if (selectedServiceFilter !== "all") {
+      filtered = filtered.filter((apt) => apt.service_id === selectedServiceFilter);
     }
 
     // Date filter
