@@ -150,28 +150,6 @@ function App() {
     }
   };
 
-  const initializeDefaultServices = async () => {
-    try {
-      const response = await api.get("/services"); 
-      if (response.data.length === 0) {
-        const defaultServices = [
-          { name: "Tek Adet Koltuk Takımı Yıkama", price: 450 },
-          { name: "Koltuk Takımı Yıkama", price: 650 },
-          { name: "Minderli Koltuk Takımı Yıkama", price: 750 },
-          { name: "Yastıklı Koltuk Takımı Yıkama", price: 700 },
-          { name: "L Koltuk Yıkama", price: 800 },
-          { name: "Chester Koltuk Takımı Yıkama", price: 900 }
-        ];
-        for (const service of defaultServices) {
-          await api.post("/services", service); 
-        }
-        loadServices();
-      }
-    } catch (error) {
-      console.error("Varsayılan hizmetler yüklenemedi:", error);
-    }
-  };
-
   const loadServices = async () => {
     try {
       const response = await api.get("/services"); 
