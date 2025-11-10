@@ -23,11 +23,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-      if (!BACKEND_URL) {
-        console.error("REACT_APP_BACKEND_URL environment variable tanımlı değil!");
-        throw new Error("Backend URL yapılandırılmamış. Lütfen .env dosyasını kontrol edin.");
-      }
-
+      // BACKEND_URL boş olabilir (same-origin için geçerli)
       const formData = new URLSearchParams();
       formData.append('username', username);
       formData.append('password', password);
