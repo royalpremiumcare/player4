@@ -202,6 +202,11 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
         appointment_date: format(formData.appointment_date, "yyyy-MM-dd")
       };
 
+      // Personel kendi randevusunu oluştururken, kendisini ata
+      if (userRole === 'staff' && currentUser && !payload.staff_member_id) {
+        payload.staff_member_id = currentUser.username;
+      }
+
       // Eğer staff_member_id boşsa, backend otomatik atama yapacak
       if (!payload.staff_member_id) {
         delete payload.staff_member_id;
