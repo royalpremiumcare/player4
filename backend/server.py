@@ -640,6 +640,20 @@ async def update_appointment(request: Request, appointment_id: str, appointment_
     updated_appointment = await db.appointments.find_one(query, {"_id": 0})
     if isinstance(updated_appointment['created_at'], str): updated_appointment['created_at'] = datetime.fromisoformat(updated_appointment['created_at'])
     
+    # Audit log
+    await create_audit_log(
+        db=db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.username,
+        user_full_name=current_user.full_name or current_user.username,
+        action="UPDATE",
+        resource_type="APPOINTMENT",
+        resource_id=appointment_id,
+        old_value=appointment,
+        new_value=updated_appointment,
+        ip_address=request.client.host if request.client else None
+    )
+    
     # Emit WebSocket event for real-time update
     await emit_to_organization(
         current_user.organization_id,
