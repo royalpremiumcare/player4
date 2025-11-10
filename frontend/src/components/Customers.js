@@ -140,6 +140,48 @@ const Customers = () => {
     }
   };
 
+  const handleExportCustomers = async () => {
+    try {
+      const response = await api.get("/export/customers", {
+        responseType: 'blob'
+      });
+      
+      // Blob'dan dosya oluştur ve indir
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'musteriler.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast.success("Müşteriler CSV olarak indirildi");
+    } catch (error) {
+      toast.error("Export başarısız oldu");
+    }
+  };
+
+  const handleExportAppointments = async () => {
+    try {
+      const response = await api.get("/export/appointments", {
+        responseType: 'blob'
+      });
+      
+      // Blob'dan dosya oluştur ve indir
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'randevular.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast.success("Randevular CSV olarak indirildi");
+    } catch (error) {
+      toast.error("Export başarısız oldu");
+    }
+  };
+
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.phone.includes(searchTerm)
