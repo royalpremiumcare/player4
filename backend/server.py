@@ -985,6 +985,124 @@ async def delete_customer(request: Request, phone: str, current_user: UserInDB =
     
     return {"message": f"Müşteri ve {result.deleted_count} randevu silindi", "deleted_appointments": result.deleted_count}
 
+@api_router.get("/export/appointments")
+async def export_appointments(request: Request, current_user: UserInDB = Depends(get_current_user)):
+    """Randevuları CSV formatında export et"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+    
+    db = await get_db_from_request(request)
+    appointments = await db.appointments.find(
+        {"organization_id": current_user.organization_id},
+        {"_id": 0}
+    ).sort("appointment_date", -1).to_list(10000)
+    
+    # CSV formatında hazırla
+    import csv
+    import io
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow([
+        "Randevu ID", "Müşteri Adı", "Telefon", "Tarih", "Saat",
+        "Hizmet", "Personel", "Durum", "Fiyat", "Notlar", "Oluşturma Tarihi"
+    ])
+    
+    # Data
+    for apt in appointments:
+        writer.writerow([
+            apt.get('id', ''),
+            apt.get('customer_name', ''),
+            apt.get('phone', ''),
+            apt.get('appointment_date', ''),
+            apt.get('appointment_time', ''),
+            apt.get('service_name', ''),
+            apt.get('staff_member_name', 'Atanmadı'),
+            apt.get('status', ''),
+            apt.get('price', 0),
+            apt.get('notes', ''),
+            str(apt.get('created_at', ''))
+        ])
+    
+    output.seek(0)
+    
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=randevular.csv"}
+    )
+
+@api_router.get("/export/customers")
+async def export_customers(request: Request, current_user: UserInDB = Depends(get_current_user)):
+    """Müşterileri CSV formatında export et"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+    
+    db = await get_db_from_request(request)
+    
+    # Tüm randevuları çek
+    appointments = await db.appointments.find(
+        {"organization_id": current_user.organization_id},
+        {"_id": 0}
+    ).to_list(10000)
+    
+    # Unique müşterileri grupla
+    customer_map = {}
+    for apt in appointments:
+        phone = apt.get('phone')
+        if phone and phone not in customer_map:
+            customer_map[phone] = {
+                "name": apt.get('customer_name', ''),
+                "phone": phone,
+                "total_appointments": 0,
+                "completed_appointments": 0,
+                "last_appointment_date": apt.get('appointment_date', '')
+            }
+        
+        if phone:
+            customer_map[phone]['total_appointments'] += 1
+            if apt.get('status') == 'Tamamlandı':
+                customer_map[phone]['completed_appointments'] += 1
+            # En son randevu tarihini güncelle
+            if apt.get('appointment_date', '') > customer_map[phone]['last_appointment_date']:
+                customer_map[phone]['last_appointment_date'] = apt.get('appointment_date', '')
+    
+    # CSV formatında hazırla
+    import csv
+    import io
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow([
+        "Müşteri Adı", "Telefon", "Toplam Randevu",
+        "Tamamlanan Randevu", "Son Randevu Tarihi"
+    ])
+    
+    # Data
+    customers = sorted(customer_map.values(), key=lambda x: x['total_appointments'], reverse=True)
+    for customer in customers:
+        writer.writerow([
+            customer['name'],
+            customer['phone'],
+            customer['total_appointments'],
+            customer['completed_appointments'],
+            customer['last_appointment_date']
+        ])
+    
+    output.seek(0)
+    
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=musteriler.csv"}
+    )
+
 @api_router.get("/customers/{phone}/history")
 async def get_customer_history(request: Request, phone: str, current_user: UserInDB = Depends(get_current_user)):
     db = await get_db_from_request(request); query = {"phone": phone, "organization_id": current_user.organization_id}
