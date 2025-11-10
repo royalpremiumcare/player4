@@ -288,7 +288,7 @@ def slugify(text: str) -> str:
 class User(BaseModel):
     username: str; full_name: Optional[str] = None; organization_id: str = Field(default_factory=lambda: str(uuid.uuid4())); role: str = "admin"; slug: Optional[str] = None; permitted_service_ids: List[str] = [] 
 class UserInDB(User): hashed_password: str
-class UserCreate(BaseModel): username: str; password: str; full_name: Optional[str] = None; organization_name: Optional[str] = None; support_phone: Optional[str] = None
+class UserCreate(BaseModel): username: str; password: str; full_name: Optional[str] = None; organization_name: Optional[str] = None; support_phone: Optional[str] = None; sector: Optional[str] = None
 class Token(BaseModel): access_token: str; token_type: str
 class Service(BaseModel):
     model_config = ConfigDict(extra="ignore"); organization_id: str; id: str = Field(default_factory=lambda: str(uuid.uuid4())); name: str; price: float; created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
