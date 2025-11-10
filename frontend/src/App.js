@@ -351,6 +351,7 @@ function App() {
           <Dashboard
             appointments={appointments}
             stats={stats}
+            userRole={userRole}
             onEditAppointment={handleEditAppointment}
             onNewAppointment={handleNewAppointment}
             onRefresh={async () => {
