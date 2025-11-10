@@ -270,6 +270,7 @@ function App() {
     { id: "services", icon: Briefcase, label: "Hizmetler" },
     { id: "staff", icon: UserCog, label: "Personel Yönetimi" },
     { id: "cash", icon: DollarSign, label: "Kasa" },
+    { id: "audit", icon: FileText, label: "Denetim Günlükleri" },
     { id: "import", icon: Upload, label: "İçe Aktar" },
     { id: "settings", icon: SettingsIcon, label: "Ayarlar" }
   ];
