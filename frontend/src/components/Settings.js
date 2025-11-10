@@ -25,6 +25,7 @@ const Settings = () => {
     
     // Model D: Personel Seçimi Ayarı
     customer_can_choose_staff: false,
+    admin_provides_service: true,
     
     // SMS Hatırlatma
     sms_reminder_hours: 1.0,
