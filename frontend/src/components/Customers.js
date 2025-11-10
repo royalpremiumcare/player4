@@ -129,6 +129,17 @@ const Customers = () => {
     window.open(`https://wa.me/${cleanPhone}`, "_blank");
   };
 
+  const handleDelete = async (phone) => {
+    try {
+      await api.delete(`/customers/${phone}`);
+      toast.success("Müşteri ve tüm randevuları silindi");
+      setDeleteDialog(null);
+      await loadCustomers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Müşteri silinemedi");
+    }
+  };
+
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.phone.includes(searchTerm)
