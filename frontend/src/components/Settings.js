@@ -233,7 +233,7 @@ const Settings = () => {
                   {(logoPreview || settings.logo_url) ? (
                     <div className="relative w-32 h-32 border-2 border-purple-300 rounded-lg overflow-hidden bg-white">
                       <img
-                        src={logoPreview || settings.logo_url}
+                        src={logoPreview || `${process.env.REACT_APP_BACKEND_URL || ''}${settings.logo_url}`}
                         alt="Logo"
                         className="w-full h-full object-contain"
                       />
