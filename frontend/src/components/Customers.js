@@ -27,6 +27,7 @@ const Customers = () => {
   const [customers, setCustomers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
+  const [deleteDialog, setDeleteDialog] = useState(null);
 
   useEffect(() => {
     loadCustomers();
