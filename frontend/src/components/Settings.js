@@ -15,6 +15,8 @@ const Settings = () => {
     company_name: "", // Artık dinamik
     support_phone: "", // Artık dinamik
     feedback_url: "", // Artık dinamik
+    logo_url: "", // Logo URL
+    slug: "", // Slug
 
     // Randevu/Takvim Ayarları
     work_start_hour: 7,
@@ -23,9 +25,14 @@ const Settings = () => {
     
     // Model D: Personel Seçimi Ayarı
     customer_can_choose_staff: false,
+    
+    // SMS Hatırlatma
+    sms_reminder_hours: 1.0,
   });
   
   const [loading, setLoading] = useState(false);
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState(null);
 
   useEffect(() => {
     loadSettings();
