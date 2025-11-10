@@ -347,35 +347,50 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
 
       {/* Filters moved to compact header above */}
 
-      {/* View Toggle */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
-        <Button
+      {/* View Toggle - Modern Tabs Style */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+        <button
           data-testid="view-past"
           onClick={() => setView("past")}
-          variant={view === "past" ? "default" : "outline"}
-          className={view === "past" ? "bg-blue-500 hover:bg-blue-600" : ""}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+            view === "past"
+              ? "bg-white text-blue-600 shadow-sm"
+              : "text-gray-600 hover:text-gray-900"
+          }`}
         >
-          <ChevronLeft className="w-4 h-4 mr-2" />
-          Geçmiş ({appointments.filter(a => a.appointment_date < today).length})
-        </Button>
-        <Button
+          Geçmiş
+          <span className="ml-1.5 text-xs opacity-70">
+            ({appointments.filter(a => a.appointment_date < today).length})
+          </span>
+        </button>
+        <button
           data-testid="view-today"
           onClick={() => setView("today")}
-          variant={view === "today" ? "default" : "outline"}
-          className={view === "today" ? "bg-blue-500 hover:bg-blue-600" : ""}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+            view === "today"
+              ? "bg-white text-blue-600 shadow-sm"
+              : "text-gray-600 hover:text-gray-900"
+          }`}
         >
-          <Calendar className="w-4 h-4 mr-2" />
-          Bugün ({appointments.filter(a => a.appointment_date === today).length})
-        </Button>
-        <Button
+          Bugün
+          <span className="ml-1.5 text-xs opacity-70">
+            ({appointments.filter(a => a.appointment_date === today).length})
+          </span>
+        </button>
+        <button
           data-testid="view-future"
           onClick={() => setView("future")}
-          variant={view === "future" ? "default" : "outline"}
-          className={view === "future" ? "bg-blue-500 hover:bg-blue-600" : ""}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+            view === "future"
+              ? "bg-white text-blue-600 shadow-sm"
+              : "text-gray-600 hover:text-gray-900"
+          }`}
         >
-          Gelecek ({appointments.filter(a => a.appointment_date > today).length})
-          <ChevronRight className="w-4 h-4 ml-2" />
-        </Button>
+          Gelecek
+          <span className="ml-1.5 text-xs opacity-70">
+            ({appointments.filter(a => a.appointment_date > today).length})
+          </span>
+        </button>
       </div>
 
       {/* Appointments List */}
