@@ -219,6 +219,44 @@ socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
 # --- Router prefix'i kaldırıldı ---
 api_router = APIRouter()
 
+# === SOCKET.IO EVENT HANDLERS ===
+@sio.event
+async def connect(sid, environ):
+    """Client connected"""
+    logger.info(f"WebSocket client connected: {sid}")
+    await sio.emit('connection_established', {'status': 'connected'}, room=sid)
+
+@sio.event
+async def disconnect(sid):
+    """Client disconnected"""
+    logger.info(f"WebSocket client disconnected: {sid}")
+
+@sio.event
+async def join_organization(sid, data):
+    """Join organization room for real-time updates"""
+    organization_id = data.get('organization_id')
+    if organization_id:
+        await sio.enter_room(sid, f"org_{organization_id}")
+        logger.info(f"Client {sid} joined organization room: org_{organization_id}")
+        await sio.emit('joined_organization', {'organization_id': organization_id}, room=sid)
+
+@sio.event
+async def leave_organization(sid, data):
+    """Leave organization room"""
+    organization_id = data.get('organization_id')
+    if organization_id:
+        await sio.leave_room(sid, f"org_{organization_id}")
+        logger.info(f"Client {sid} left organization room: org_{organization_id}")
+
+# Helper function to emit events to organization rooms
+async def emit_to_organization(organization_id: str, event: str, data: dict):
+    """Emit event to all clients in an organization room"""
+    try:
+        await sio.emit(event, data, room=f"org_{organization_id}")
+        logger.info(f"Emitted {event} to org_{organization_id}")
+    except Exception as e:
+        logger.error(f"Error emitting {event} to org_{organization_id}: {e}")
+
 # === GÜVENLİK YARDIMCI FONKSİYONLARI (Aynı kaldı) ===
 _mongo_client = None; _mongo_db = None
 async def ensure_db_connection(request: Request):
