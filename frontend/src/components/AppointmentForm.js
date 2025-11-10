@@ -39,6 +39,7 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
   const [customers, setCustomers] = useState([]);
   const [isNewCustomer, setIsNewCustomer] = useState(true);
   const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [customerSearchTerm, setCustomerSearchTerm] = useState("");
 
   useEffect(() => {
     loadCurrentUser();
