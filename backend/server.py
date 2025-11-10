@@ -654,6 +654,61 @@ async def update_staff_services(request: Request, staff_id: str, service_ids: Li
     return {"message": "Personel hizmetleri güncellendi", "staff_id": staff_id, "permitted_service_ids": service_ids}
 
 # === CUSTOMERS ROUTES ===
+@api_router.get("/customers")
+async def get_customers(request: Request, current_user: UserInDB = Depends(get_current_user)):
+    """Tüm unique müşterileri listele (organization bazlı)"""
+    db = await get_db_from_request(request)
+    
+    # Tüm randevuları çek
+    appointments = await db.appointments.find(
+        {"organization_id": current_user.organization_id},
+        {"_id": 0}
+    ).to_list(10000)
+    
+    # Unique müşterileri grupla
+    customer_map = {}
+    for apt in appointments:
+        phone = apt.get('phone')
+        if phone and phone not in customer_map:
+            customer_map[phone] = {
+                "name": apt.get('customer_name', ''),
+                "phone": phone,
+                "total_appointments": 0,
+                "completed_appointments": 0
+            }
+        
+        if phone:
+            customer_map[phone]['total_appointments'] += 1
+            if apt.get('status') == 'Tamamlandı':
+                customer_map[phone]['completed_appointments'] += 1
+    
+    # Liste olarak döndür
+    customers = list(customer_map.values())
+    customers.sort(key=lambda x: x['total_appointments'], reverse=True)
+    
+    return customers
+
+@api_router.delete("/customers/{phone}")
+async def delete_customer(request: Request, phone: str, current_user: UserInDB = Depends(get_current_user)):
+    """Müşteriyi ve TÜM randevularını sil"""
+    # Sadece admin silebilir
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+    
+    db = await get_db_from_request(request)
+    
+    # Müşterinin tüm randevularını sil
+    query = {"phone": phone, "organization_id": current_user.organization_id}
+    result = await db.appointments.delete_many(query)
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Bu telefon numarasına ait randevu bulunamadı")
+    
+    # Transaction'ları da sil (eğer varsa)
+    await db.transactions.delete_many(query)
+    
+    return {"message": f"Müşteri ve {result.deleted_count} randevu silindi", "deleted_appointments": result.deleted_count}
+
 @api_router.get("/customers/{phone}/history")
 async def get_customer_history(request: Request, phone: str, current_user: UserInDB = Depends(get_current_user)):
     db = await get_db_from_request(request); query = {"phone": phone, "organization_id": current_user.organization_id}
