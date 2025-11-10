@@ -83,8 +83,29 @@ const PublicBookingPageV2 = () => {
       const response = await axios.get(`${API}/public/availability/${business.organization_id}`, {
         params: params
       });
-      setAvailableSlots(response.data.available_slots || []);
-      console.log("✅ Müsait saatler:", response.data.available_slots);
+      
+      let slots = response.data.available_slots || [];
+      
+      // Bugünün tarihi seçiliyse, geçmiş saatleri filtrele
+      const today = format(new Date(), "yyyy-MM-dd");
+      if (dateStr === today) {
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        
+        slots = slots.filter(slot => {
+          const [slotHour, slotMinute] = slot.split(':').map(Number);
+          // Saat tamamen gelecekte mi?
+          if (slotHour > currentHour) return true;
+          // Aynı saatteyse, dakika kontrolü
+          if (slotHour === currentHour && slotMinute > currentMinute) return true;
+          // Geçmişte
+          return false;
+        });
+      }
+      
+      setAvailableSlots(slots);
+      console.log("✅ Müsait saatler:", slots);
       console.log("🔍 Seçili personel:", selectedStaff || "Farketmez");
     } catch (error) {
       console.error("❌ Müsait saatler yüklenemedi:", error);
