@@ -703,8 +703,8 @@ async def upload_logo(request: Request, file: UploadFile = File(...), current_us
     with open(file_path, "wb") as f:
         f.write(file_content)
     
-    # Update settings with logo URL
-    logo_url = f"/static/logos/{unique_filename}"
+    # Update settings with logo URL (with /api prefix for ingress routing)
+    logo_url = f"/api/static/logos/{unique_filename}"
     
     db = await get_db_from_request(request)
     query = {"organization_id": current_user.organization_id}
