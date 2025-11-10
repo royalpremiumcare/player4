@@ -23,6 +23,12 @@ const PublicBookingPageV2 = () => {
   const [services, setServices] = useState([]);
   const [staffMembers, setStaffMembers] = useState([]);
   const [settings, setSettings] = useState(null);
+
+  // Logo URL helper
+  const getLogoUrl = (logoUrl) => {
+    if (!logoUrl) return null;
+    return `${BACKEND_URL}${logoUrl}`;
+  };
   
   // Form States
   const [selectedService, setSelectedService] = useState(null);
