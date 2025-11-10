@@ -553,8 +553,41 @@ async def update_settings(request: Request, settings: Settings, current_user: Us
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
     
-    db = await get_db_from_request(request); query = {"organization_id": current_user.organization_id}
-    update_data = settings.model_dump(); update_data["organization_id"] = current_user.organization_id
+    db = await get_db_from_request(request)
+    query = {"organization_id": current_user.organization_id}
+    
+    # Mevcut ayarları al
+    current_settings = await db.settings.find_one(query, {"_id": 0})
+    
+    update_data = settings.model_dump()
+    update_data["organization_id"] = current_user.organization_id
+    
+    # Eğer company_name değiştiyse, yeni slug oluştur
+    if current_settings and current_settings.get('company_name') != settings.company_name:
+        # Yeni slug oluştur
+        base_slug = slugify(settings.company_name)
+        unique_slug = base_slug
+        
+        # Slug benzersizlik kontrolü
+        slug_counter = 1
+        while await db.users.find_one({"slug": unique_slug, "username": {"$ne": current_user.username}}):
+            unique_slug = f"{base_slug}{str(uuid.uuid4())[:4]}"
+            slug_counter += 1
+            if slug_counter > 10:
+                unique_slug = f"{base_slug}{str(uuid.uuid4())[:8]}"
+                break
+        
+        # User'ın slug'ını güncelle
+        await db.users.update_one(
+            {"username": current_user.username},
+            {"$set": {"slug": unique_slug}}
+        )
+        
+        # Settings'e yeni slug'ı ekle
+        update_data["slug"] = unique_slug
+        
+        logging.info(f"Company name changed. New slug: {unique_slug}")
+    
     await db.settings.update_one(query, {"$set": update_data}, upsert=True)
     updated_settings = await db.settings.find_one(query, {"_id": 0})
     return Settings(**updated_settings)
