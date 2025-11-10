@@ -1205,6 +1205,48 @@ async def delete_customer(request: Request, phone: str, current_user: UserInDB =
     
     return {"message": f"Müşteri ve {result.deleted_count} randevu silindi", "deleted_appointments": result.deleted_count}
 
+# === AUDIT LOGS ROUTES ===
+@api_router.get("/audit-logs", response_model=List[AuditLog])
+async def get_audit_logs(
+    request: Request,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user_id: Optional[str] = None,
+    action: Optional[str] = None,
+    resource_type: Optional[str] = None,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Denetim günlüklerini getir - Sadece admin"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+    
+    db = await get_db_from_request(request)
+    query = {"organization_id": current_user.organization_id}
+    
+    # Filters
+    if user_id:
+        query["user_id"] = user_id
+    if action:
+        query["action"] = action
+    if resource_type:
+        query["resource_type"] = resource_type
+    if start_date or end_date:
+        query["timestamp"] = {}
+        if start_date:
+            query["timestamp"]["$gte"] = start_date
+        if end_date:
+            query["timestamp"]["$lte"] = end_date
+    
+    # Get logs, sorted by timestamp descending
+    logs = await db.audit_logs.find(query, {"_id": 0}).sort("timestamp", -1).to_list(500)
+    
+    # Convert timestamp strings back to datetime
+    for log in logs:
+        if isinstance(log.get('timestamp'), str):
+            log['timestamp'] = datetime.fromisoformat(log['timestamp'])
+    
+    return logs
+
 @api_router.get("/export/appointments")
 async def export_appointments(request: Request, current_user: UserInDB = Depends(get_current_user)):
     """Randevuları CSV formatında export et"""
