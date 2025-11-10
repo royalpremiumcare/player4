@@ -946,12 +946,6 @@ async def get_public_business(request: Request, slug: str):
     # Hizmetleri çek
     services = await db.services.find({"organization_id": organization_id}, {"_id": 0}).to_list(1000)
     
-    # Tüm personelleri çek (SADECE gerekli alanlar - ŞİFRELER HARİÇ!)
-    staff_members = await db.users.find(
-        {"organization_id": organization_id}, 
-        {"_id": 0, "full_name": 1, "id": 1, "permitted_service_ids": 1, "username": 1}
-    ).to_list(1000)
-    
     # Ayarları çek
     settings = await db.settings.find_one({"organization_id": organization_id}, {"_id": 0})
     if not settings:
@@ -961,8 +955,19 @@ async def get_public_business(request: Request, slug: str):
             "work_start_hour": 9,
             "work_end_hour": 18,
             "appointment_interval": 30,
-            "company_name": admin_user.get('full_name', 'İşletme')
+            "company_name": admin_user.get('full_name', 'İşletme'),
+            "admin_provides_service": True
         }
+    
+    # Tüm personelleri çek (SADECE gerekli alanlar - ŞİFRELER HARİÇ!)
+    staff_members = await db.users.find(
+        {"organization_id": organization_id}, 
+        {"_id": 0, "full_name": 1, "id": 1, "permitted_service_ids": 1, "username": 1, "role": 1}
+    ).to_list(1000)
+    
+    # Admin hizmet vermiyorsa admin'i listeden çıkar
+    if not settings.get('admin_provides_service', True):
+        staff_members = [staff for staff in staff_members if staff.get('role') != 'admin']
     
     return {
         "business_name": settings.get('company_name', admin_user.get('full_name', 'İşletme')),
