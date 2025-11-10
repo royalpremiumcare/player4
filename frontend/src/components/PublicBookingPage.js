@@ -225,24 +225,22 @@ const PublicBookingPageV2 = () => {
                 <CalendarComp className="w-7 h-7 text-white" />
               </div>
               <div className="flex items-center gap-4">
-                {/* Logo - Her zaman göster */}
-                <div className="flex-shrink-0 w-16 h-16 md:w-20 md:h-20 bg-white rounded-lg border-2 border-blue-200 p-2 flex items-center justify-center">
+                {/* Logo */}
+                <div className="flex-shrink-0">
                   {business.logo_url ? (
-                    <img 
-                      src={getLogoUrl(business.logo_url)}
-                      alt={business.business_name}
-                      className="w-full h-full object-contain"
-                      onError={(e) => {
-                        console.error('Logo yüklenemedi:', business.logo_url);
-                        // Logo yüklenemezse default icon göster
-                        e.target.style.display = 'none';
-                        e.target.parentElement.innerHTML = '<svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>';
-                      }}
-                    />
+                    <div className="w-16 h-16 md:w-20 md:h-20 bg-white rounded-lg border-2 border-blue-200 p-2 flex items-center justify-center">
+                      <img 
+                        src={getLogoUrl(business.logo_url)}
+                        alt={business.business_name}
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
                   ) : (
-                    <svg className="w-8 h-8 md:w-10 md:h-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
+                    <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-500 rounded-lg flex items-center justify-center">
+                      <svg className="w-8 h-8 md:w-10 md:h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
                   )}
                 </div>
                 
