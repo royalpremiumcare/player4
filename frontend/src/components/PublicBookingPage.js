@@ -24,10 +24,11 @@ const PublicBookingPageV2 = () => {
   const [staffMembers, setStaffMembers] = useState([]);
   const [settings, setSettings] = useState(null);
 
-  // Logo URL helper
+  // Logo URL helper - logo_url zaten /api/static/... formatında
   const getLogoUrl = (logoUrl) => {
     if (!logoUrl) return null;
-    return `${BACKEND_URL}${logoUrl}`;
+    // Logo URL zaten /api/static/... formatında, direkt kullanabiliriz
+    return logoUrl;
   };
   
   // Form States
