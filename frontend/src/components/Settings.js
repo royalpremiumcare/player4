@@ -146,17 +146,22 @@ const Settings = () => {
                 {settings.slug && (
                   <div className="mt-2 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
                     <p className="text-xs text-gray-600 mb-1">Randevu Linkiniz:</p>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 text-sm font-mono bg-white px-3 py-2 rounded border border-blue-200 text-blue-700">
-                        {window.location.origin}/{settings.slug}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <code className="flex-1 text-sm font-mono bg-white px-3 py-2 rounded border border-blue-200 text-blue-700 break-all">
+                        {typeof window !== 'undefined' ? window.location.origin : ''}/{settings.slug}
                       </code>
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/${settings.slug}`);
-                          toast.success("Link kopyalandı!");
+                          try {
+                            const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/${settings.slug}`;
+                            navigator.clipboard.writeText(url);
+                            toast.success("Link kopyalandı!");
+                          } catch (error) {
+                            toast.error("Link kopyalanamadı");
+                          }
                         }}
-                        className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-xs font-semibold"
+                        className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-xs font-semibold whitespace-nowrap"
                       >
                         Kopyala
                       </button>
