@@ -408,6 +408,21 @@ class Settings(BaseModel):
     sms_completion_template: Optional[str] = None
     sms_reminder_template: Optional[str] = None
 
+class AuditLog(BaseModel):
+    """Denetim günlüğü modeli - Kritik işlemleri kaydeder"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    organization_id: str
+    user_id: str  # username
+    user_full_name: str
+    action: str  # CREATE, UPDATE, DELETE
+    resource_type: str  # APPOINTMENT, SETTINGS, CUSTOMER, SERVICE, STAFF
+    resource_id: str
+    old_value: Optional[dict] = None
+    new_value: Optional[dict] = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ip_address: Optional[str] = None
+
 # === GÜVENLİK API ENDPOINT'LERİ ===
 @api_router.post("/register", response_model=User)
 @rate_limit(LIMITS['register']) 
