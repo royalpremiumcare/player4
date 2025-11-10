@@ -189,11 +189,25 @@ const Customers = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-          Müşteriler
-        </h2>
-        <p className="text-sm text-gray-600 mt-1">Tüm müşterilerinizi görüntüleyin ve yönetin</p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+            Müşteriler
+          </h2>
+          <p className="text-sm text-gray-600 mt-1">Tüm müşterilerinizi görüntüleyin ve yönetin</p>
+        </div>
+        
+        {/* Export Buttons */}
+        <div className="flex gap-2">
+          <Button onClick={handleExportCustomers} size="sm" variant="outline" className="flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            Müşterileri İndir
+          </Button>
+          <Button onClick={handleExportAppointments} size="sm" variant="outline" className="flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            Randevuları İndir
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
