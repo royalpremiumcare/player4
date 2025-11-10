@@ -31,7 +31,7 @@ import {
 // const BACKEND_URL = process.env.REACT_APP_BACKEND_URL; // SİLİNDİ
 // const API = `${BACKEND_URL}/api`; // SİLİNDİ
 
-const Dashboard = ({ appointments, stats, onEditAppointment, onNewAppointment, onRefresh }) => {
+const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppointment, onRefresh }) => {
   const [view, setView] = useState("today"); // today, past, future
   const [filteredAppointments, setFilteredAppointments] = useState([]);
   const [deleteDialog, setDeleteDialog] = useState(null);
