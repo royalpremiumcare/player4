@@ -9,6 +9,7 @@ import requests
 import time
 
 BACKEND_URL = "https://appointflow-39.preview.emergentagent.com"
+API_BACKEND_URL = "https://appointflow-39.preview.emergentagent.com/api"
 
 async def test_simple_connection():
     print("🧪 Testing simple Socket.IO connection...")
