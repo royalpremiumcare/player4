@@ -46,6 +46,8 @@ const Dashboard = ({ appointments, stats, onEditAppointment, onNewAppointment, o
   
   useEffect(() => {
     loadStaffMembers();
+    loadServices();
+    loadCurrentUserInfo();
   }, []);
 
   const loadStaffMembers = async () => {
@@ -54,6 +56,33 @@ const Dashboard = ({ appointments, stats, onEditAppointment, onNewAppointment, o
       setStaffMembers(response.data || []);
     } catch (error) {
       console.error("Personeller yüklenemedi:", error);
+    }
+  };
+
+  const loadServices = async () => {
+    try {
+      const response = await api.get("/services");
+      setServices(response.data || []);
+    } catch (error) {
+      console.error("Hizmetler yüklenemedi:", error);
+    }
+  };
+
+  const loadCurrentUserInfo = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const currentUsername = payload.sub;
+        const response = await api.get("/users");
+        const users = response.data || [];
+        const currentUser = users.find(u => u.username === currentUsername);
+        if (currentUser && currentUser.full_name) {
+          setCurrentUserFullName(currentUser.full_name);
+        }
+      }
+    } catch (error) {
+      console.error("Kullanıcı bilgisi yüklenemedi:", error);
     }
   };
   
