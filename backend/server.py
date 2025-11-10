@@ -485,9 +485,17 @@ async def update_appointment(request: Request, appointment_id: str, appointment_
         trans_doc = transaction.model_dump(); trans_doc['created_at'] = trans_doc['created_at'].isoformat()
         await db.transactions.insert_one(trans_doc)
         try:
-            sms_message = (f"Sayın {appointment['customer_name']},\n\n" f"{company_name} hizmetiniz başarıyla tamamlanmıştır.\n\n" f"Koltuk ve tekstil yüzeyleriniz yüksek ısıda buhar ve antibakteriyel ürünlerle profesyonel olarak temizlenmiştir.\n\n" f"Hizmet kalitemizi geliştirmek adına geri bildiriminiz bizim için değerlidir.\n\n")
-            if feedback_url: sms_message += f"Görüş bildirmek için: {feedback_url}\n\n"
-            sms_message += f"— {company_name}"; send_sms(appointment['phone'], sms_message)
+            # Tamamlanma SMS'i - Sade ve kısa
+            sms_message = (
+                f"Sayın {appointment['customer_name']},\n\n"
+                f"{company_name} hizmetiniz tamamlandı.\n\n"
+                f"Tarih: {appointment['appointment_date']}\n"
+                f"Hizmet: {appointment['service_name']}\n\n"
+            )
+            if feedback_url: 
+                sms_message += f"Geri bildirim: {feedback_url}\n\n"
+            sms_message += f"Bilgi: {support_phone}"
+            send_sms(appointment['phone'], sms_message)
         except Exception as e: logging.error(f"Tamamlandı SMS'i gönderilirken hata oluştu: {e}")
     elif new_status == 'İptal' and old_status != 'İptal':
         try:
