@@ -542,8 +542,28 @@ async def create_appointment(request: Request, appointment: AppointmentCreate, c
     settings_data = await db.settings.find_one({"organization_id": current_user.organization_id})
     if not settings_data:
         default_settings = Settings(organization_id=current_user.organization_id); settings_data = default_settings.model_dump()
-    company_name = settings_data.get("company_name", "İşletmeniz"); support_phone = settings_data.get("support_phone", "Destek Hattı")
-    sms_message = (f"Sayın {appointment.customer_name},\n\n" f"{company_name} hizmet randevunuz onaylanmıştır.\n\n" f"Tarih: {appointment.appointment_date}\n" f"Saat: {appointment.appointment_time}\n\n" f"Profesyonel ekibimiz belirtilen adreste zamanında hizmet verecektir.\n\n" f"Tüm işlemler hijyen ve müşteri memnuniyeti standartlarına uygun olarak yürütülecektir.\n\n" f"Bilgi veya değişiklik için: {support_phone}\n\n" f"— {company_name}")
+    company_name = settings_data.get("company_name", "İşletmeniz")
+    support_phone = settings_data.get("support_phone", "Destek Hattı")
+    
+    # SMS Template kullan (özelleştirilmişse)
+    template = settings_data.get("sms_confirmation_template")
+    if template:
+        sms_message = build_sms_message(
+            template, company_name, appointment.customer_name,
+            appointment.appointment_date, appointment.appointment_time,
+            service['name'], support_phone
+        )
+    else:
+        # Default sade mesaj
+        sms_message = (
+            f"Sayın {appointment.customer_name},\n\n"
+            f"{company_name} randevunuz onaylandı.\n\n"
+            f"Tarih: {appointment.appointment_date}\n"
+            f"Saat: {appointment.appointment_time}\n"
+            f"Hizmet: {service['name']}\n\n"
+            f"Bilgi: {support_phone}"
+        )
+    
     send_sms(appointment.phone, sms_message)
     return appointment_obj
 
