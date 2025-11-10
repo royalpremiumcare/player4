@@ -673,6 +673,41 @@ async def update_settings(request: Request, settings: Settings, current_user: Us
     updated_settings = await db.settings.find_one(query, {"_id": 0})
     return Settings(**updated_settings)
 
+@api_router.post("/settings/logo")
+async def upload_logo(request: Request, file: UploadFile = File(...), current_user: UserInDB = Depends(get_current_user)):
+    """Logo upload endpoint"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+    
+    # File validation
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="Sadece resim dosyaları yüklenebilir")
+    
+    # File size check (2MB)
+    file_content = await file.read()
+    if len(file_content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Dosya boyutu 2MB'dan büyük olamaz")
+    
+    # Save file to static directory
+    static_dir = Path("/app/backend/static/logos")
+    static_dir.mkdir(parents=True, exist_ok=True)
+    
+    file_extension = file.filename.split('.')[-1]
+    unique_filename = f"{current_user.organization_id}_{str(uuid.uuid4())[:8]}.{file_extension}"
+    file_path = static_dir / unique_filename
+    
+    with open(file_path, "wb") as f:
+        f.write(file_content)
+    
+    # Update settings with logo URL
+    logo_url = f"/static/logos/{unique_filename}"
+    
+    db = await get_db_from_request(request)
+    query = {"organization_id": current_user.organization_id}
+    await db.settings.update_one(query, {"$set": {"logo_url": logo_url}}, upsert=True)
+    
+    return {"logo_url": logo_url, "message": "Logo başarıyla yüklendi"}
+
 # === USERS/PERSONEL LİSTESİ (Model D) ===
 @api_router.get("/users")
 async def get_users(request: Request, current_user: UserInDB = Depends(get_current_user)):
