@@ -183,6 +183,59 @@ const Settings = () => {
                 </p>
               </div>
             </div>
+            
+            {/* Logo Upload */}
+            <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
+              <Label className="flex items-center gap-2 mb-3">
+                <Image className="w-5 h-5 text-purple-600" />
+                <span className="font-semibold text-gray-900">İşletme Logosu</span>
+              </Label>
+              
+              <div className="flex flex-col md:flex-row gap-4">
+                {/* Logo Preview */}
+                <div className="flex-shrink-0">
+                  {(logoPreview || settings.logo_url) ? (
+                    <div className="relative w-32 h-32 border-2 border-purple-300 rounded-lg overflow-hidden bg-white">
+                      <img
+                        src={logoPreview || settings.logo_url}
+                        alt="Logo"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-32 h-32 border-2 border-dashed border-purple-300 rounded-lg flex items-center justify-center bg-white">
+                      <Upload className="w-8 h-8 text-purple-400" />
+                    </div>
+                  )}
+                </div>
+                
+                {/* Upload Button */}
+                <div className="flex-1 space-y-2">
+                  <Input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        if (file.size > 2 * 1024 * 1024) {
+                          toast.error("Dosya boyutu 2MB'dan küçük olmalı");
+                          return;
+                        }
+                        setLogoFile(file);
+                        setLogoPreview(URL.createObjectURL(file));
+                      }
+                    }}
+                    className="cursor-pointer"
+                  />
+                  <p className="text-xs text-gray-600">
+                    PNG veya JPG, maksimum 2MB
+                  </p>
+                  <p className="text-xs text-purple-600">
+                    Logo müşteri randevu sayfasında gösterilecek
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
           
           {/* AYIRICI */}
