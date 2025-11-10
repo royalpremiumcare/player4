@@ -32,11 +32,11 @@ function App() {
   const [pullDistance, setPullDistance] = useState(0);
   const [settings, setSettings] = useState(null);
 
-  // Logo URL helper
+  // Logo URL helper - logo_url zaten /api/static/... formatında
   const getLogoUrl = (logoUrl) => {
     if (!logoUrl) return null;
-    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
-    return `${backendUrl}${logoUrl}`;
+    // Logo URL zaten /api/static/... formatında, direkt kullanabiliriz
+    return logoUrl;
   };
 
   useEffect(() => {
