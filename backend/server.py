@@ -343,9 +343,57 @@ async def register_user(request: Request, user_in: UserCreate, db = Depends(get_
         company_name=user_in.organization_name or "İşletmeniz",
         support_phone=user_in.support_phone or "05000000000",
         slug=unique_slug,
-        customer_can_choose_staff=False
+        customer_can_choose_staff=False,
+        sector=getattr(user_in, 'sector', None)
     )
     await db.settings.insert_one(default_settings.model_dump())
+    
+    # Sektör bazlı default services ekle
+    sector = getattr(user_in, 'sector', None)
+    if sector and sector != "Diğer/Boş":
+        sector_services = {
+            "Kuaför": [
+                {"name": "Saç Kesimi", "price": 150},
+                {"name": "Saç Boyama", "price": 300},
+                {"name": "Sakal Traşı", "price": 80},
+            ],
+            "Güzellik Salonu": [
+                {"name": "Manikür", "price": 100},
+                {"name": "Pedikür", "price": 120},
+                {"name": "Cilt Bakımı", "price": 250},
+                {"name": "Kaş Dizaynı", "price": 80},
+            ],
+            "Masaj / SPA": [
+                {"name": "Klasik Masaj", "price": 300},
+                {"name": "Aromaterapi Masajı", "price": 350},
+                {"name": "İsveç Masajı", "price": 400},
+            ],
+            "Diyetisyen": [
+                {"name": "İlk Danışma", "price": 300},
+                {"name": "Kontrol Muayenesi", "price": 200},
+                {"name": "Diyet Planı", "price": 250},
+            ],
+            "Psikolog / Danışmanlık": [
+                {"name": "Bireysel Terapi", "price": 500},
+                {"name": "Çift Terapisi", "price": 700},
+                {"name": "Aile Danışmanlığı", "price": 600},
+            ],
+            "Diş Klinikleri": [
+                {"name": "Muayene", "price": 200},
+                {"name": "Dolgu", "price": 400},
+                {"name": "Diş Temizliği", "price": 300},
+                {"name": "Beyazlatma", "price": 1500},
+            ],
+        }
+        
+        services_to_add = sector_services.get(sector, [])
+        for service_data in services_to_add:
+            service = Service(
+                id=str(uuid.uuid4()),
+                organization_id=new_org_id,
+                **service_data
+            )
+            await db.services.insert_one(service.model_dump())
     
     return User(**user_db.model_dump())
 
