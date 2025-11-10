@@ -293,6 +293,30 @@ const Customers = () => {
           ))
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteDialog} onOpenChange={() => setDeleteDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Müşteriyi Sil</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{deleteDialog?.name}</strong> adlı müşteriyi ve <strong>TÜM randevularını</strong> ({deleteDialog?.totalAppointments} adet) silmek istediğinizden emin misiniz?
+              <br /><br />
+              <span className="text-red-600 font-semibold">Bu işlem geri alınamaz!</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>İptal</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="confirm-delete-customer-button"
+              onClick={() => handleDelete(deleteDialog?.phone)}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              Evet, Sil
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
