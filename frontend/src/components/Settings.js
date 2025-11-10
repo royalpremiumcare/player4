@@ -70,8 +70,35 @@ const Settings = () => {
 
     setLoading(true);
     try {
+      // Önce logo upload (eğer varsa)
+      if (logoFile) {
+        const formData = new FormData();
+        formData.append('file', logoFile);
+        
+        try {
+          const logoResponse = await api.post("/settings/logo", formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          });
+          
+          // Logo URL'sini settings'e ekle
+          settings.logo_url = logoResponse.data.logo_url;
+          toast.success("Logo yüklendi");
+        } catch (error) {
+          toast.error("Logo yüklenemedi: " + (error.response?.data?.detail || error.message));
+          // Logo hatası olsa bile settings kaydedilsin
+        }
+      }
+      
+      // Settings'i kaydet
       await api.put("/settings", settings); 
       toast.success("Ayarlar başarıyla kaydedildi");
+      
+      // Reload settings to get updated slug
+      await loadSettings();
+      setLogoFile(null);
+      setLogoPreview(null);
       
     } catch (error) {
       console.error(error);
