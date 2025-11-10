@@ -214,7 +214,7 @@ sio = socketio.AsyncServer(
     logger=True,
     engineio_logger=False
 )
-socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app, socketio_path='/api/socket.io')
 
 # --- Router prefix'i kaldırıldı ---
 api_router = APIRouter()
