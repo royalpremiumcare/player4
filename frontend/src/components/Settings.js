@@ -144,14 +144,23 @@ const Settings = () => {
                 />
                 <p className="text-xs text-gray-500">Müşterilerinize gönderilen SMS'lerde yer alır.</p>
                 {settings.slug && (
-                  <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
-                    <p className="text-xs text-blue-700">
-                      <strong>Public Booking Linkiniz:</strong><br/>
-                      <code className="text-xs">/book/{settings.slug}</code>
-                    </p>
-                    <p className="text-xs text-amber-600 mt-1">
-                      ⚠️ İşletme adını değiştirirseniz link otomatik güncellenir
-                    </p>
+                  <div className="mt-2 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                    <p className="text-xs text-gray-600 mb-1">Randevu Linkiniz:</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-sm font-mono bg-white px-3 py-2 rounded border border-blue-200 text-blue-700">
+                        {window.location.origin}/{settings.slug}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${window.location.origin}/${settings.slug}`);
+                          toast.success("Link kopyalandı!");
+                        }}
+                        className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-xs font-semibold"
+                      >
+                        Kopyala
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
