@@ -277,31 +277,55 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
           {!appointment && !isNewCustomer && customers.length > 0 && (
             <div className="space-y-2">
               <Label htmlFor="existing_customer">Müşteri Seç *</Label>
-              <Select
-                value={selectedCustomer}
-                onValueChange={(value) => {
-                  setSelectedCustomer(value);
-                  const customer = customers.find(c => c.phone === value);
-                  if (customer) {
-                    setFormData({
-                      ...formData,
-                      customer_name: customer.name,
-                      phone: customer.phone
-                    });
-                  }
-                }}
-              >
-                <SelectTrigger data-testid="existing-customer-select">
-                  <SelectValue placeholder="Müşteri seçin..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.map((customer) => (
-                    <SelectItem key={customer.phone} value={customer.phone}>
-                      {customer.name} - {customer.phone} ({customer.total_appointments} randevu)
-                    </SelectItem>
+              
+              {/* Arama Kutusu */}
+              <Input
+                type="text"
+                placeholder="Müşteri adı ara..."
+                value={customerSearchTerm}
+                onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                className="mb-2"
+              />
+              
+              {/* Müşteri Listesi */}
+              <div className="max-h-60 overflow-y-auto border rounded-lg">
+                {customers
+                  .filter(customer => 
+                    customer.name.toLowerCase().includes(customerSearchTerm.toLowerCase())
+                  )
+                  .map((customer) => (
+                    <button
+                      key={customer.phone}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomer(customer.phone);
+                        setFormData({
+                          ...formData,
+                          customer_name: customer.name,
+                          phone: customer.phone
+                        });
+                        setCustomerSearchTerm(customer.name);
+                      }}
+                      className={`w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b ${
+                        selectedCustomer === customer.phone ? 'bg-blue-100 font-semibold' : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-900">{customer.name}</span>
+                        <span className="text-xs text-gray-500">
+                          {customer.total_appointments} randevu
+                        </span>
+                      </div>
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
+                {customers.filter(customer => 
+                  customer.name.toLowerCase().includes(customerSearchTerm.toLowerCase())
+                ).length === 0 && (
+                  <div className="px-4 py-8 text-center text-gray-500">
+                    Müşteri bulunamadı
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
