@@ -468,18 +468,20 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
                     </button>
                   </div>
 
-                  {/* Model D: Atanan Personel */}
-                  <div className="flex items-center gap-2 bg-purple-50 px-3 py-2 rounded-lg">
-                    <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    <span className="text-sm font-medium text-purple-900">
-                      Atanan Personel:
-                    </span>
-                    <span className="text-sm text-purple-700 font-semibold">
-                      {getStaffName(appointment.staff_member_id)}
-                    </span>
-                  </div>
+                  {/* Model D: Atanan Personel - Sadece customer_can_choose_staff true ise göster */}
+                  {settings?.customer_can_choose_staff && (
+                    <div className="flex items-center gap-2 bg-purple-50 px-3 py-2 rounded-lg">
+                      <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <span className="text-sm font-medium text-purple-900">
+                        Atanan Personel:
+                      </span>
+                      <span className="text-sm text-purple-700 font-semibold">
+                        {getStaffName(appointment.staff_member_id)}
+                      </span>
+                    </div>
+                  )}
 
                   {appointment.notes && (
                     <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
