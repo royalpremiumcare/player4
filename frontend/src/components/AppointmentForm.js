@@ -119,6 +119,15 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
     }
   };
 
+  const loadCustomers = async () => {
+    try {
+      const response = await api.get("/customers");
+      setCustomers(response.data || []);
+    } catch (error) {
+      console.error("Müşteriler yüklenemedi:", error);
+    }
+  };
+
   const loadSettings = async () => {
     try {
       const response = await api.get("/settings");
