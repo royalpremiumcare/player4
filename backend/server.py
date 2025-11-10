@@ -162,6 +162,26 @@ async def lifespan(app: FastAPI):
         logging.info("Step 4 SUCCESS: SMS Reminder Scheduler started (runs every 5 minutes)")
     except Exception as e:
         logging.warning(f"WARNING during Scheduler initialization: {type(e).__name__}: {str(e)}")
+    
+    try:
+        logging.info("Step 5: Creating Database Indexes...")
+        # Appointments indexes - Performance optimization
+        await _mongo_db.appointments.create_index([("organization_id", 1), ("appointment_date", -1)])
+        await _mongo_db.appointments.create_index([("organization_id", 1), ("staff_member_id", 1)])
+        await _mongo_db.appointments.create_index([("organization_id", 1), ("phone", 1)])
+        await _mongo_db.appointments.create_index([("organization_id", 1), ("status", 1)])
+        
+        # Users indexes
+        await _mongo_db.users.create_index([("organization_id", 1), ("role", 1)])
+        await _mongo_db.users.create_index([("slug", 1)], unique=True, sparse=True)
+        
+        # Settings indexes
+        await _mongo_db.settings.create_index([("organization_id", 1)], unique=True)
+        await _mongo_db.settings.create_index([("slug", 1)], unique=True, sparse=True)
+        
+        logging.info("Step 5 SUCCESS: Database indexes created")
+    except Exception as e:
+        logging.warning(f"WARNING during Index creation: {type(e).__name__}: {str(e)}")
 
     yield
 
