@@ -296,6 +296,72 @@ const Dashboard = ({ appointments, stats, onEditAppointment, onNewAppointment, o
         </Card>
       )}
 
+      {/* Filtreler (Admin için) */}
+      {staffMembers.length > 0 && (
+        <Card className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+          <div className="flex items-center gap-2 mb-3">
+            <Filter className="w-4 h-4 text-purple-600" />
+            <h3 className="font-semibold text-gray-900">Filtrele</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Personel Filtresi */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Personel</label>
+              <Select value={selectedStaffFilter} onValueChange={setSelectedStaffFilter}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Tüm Personeller" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tümü</SelectItem>
+                  {staffMembers.map((staff) => (
+                    <SelectItem key={staff.username} value={staff.username}>
+                      {staff.full_name || staff.username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Hizmet Filtresi */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Hizmet</label>
+              <Select value={selectedServiceFilter} onValueChange={setSelectedServiceFilter}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Tüm Hizmetler" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tümü</SelectItem>
+                  {services.map((service) => (
+                    <SelectItem key={service.id} value={service.id}>
+                      {service.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {(selectedStaffFilter !== "all" || selectedServiceFilter !== "all") && (
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-sm text-purple-700">
+                {filteredAppointments.length} randevu gösteriliyor
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelectedStaffFilter("all");
+                  setSelectedServiceFilter("all");
+                }}
+                className="text-xs"
+              >
+                Filtreleri Temizle
+              </Button>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* View Toggle */}
       <div className="flex gap-2 overflow-x-auto pb-2">
         <Button
