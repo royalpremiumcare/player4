@@ -207,6 +207,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Randevu SaaS API", description="... (Açıklamanız buradaydı) ...", version="1.4.2 (Final Fixes)", lifespan=lifespan)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# === SOCKET.IO SETUP ===
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    cors_allowed_origins='*',  # Will be configured via environment
+    logger=True,
+    engineio_logger=False
+)
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
+
 # --- Router prefix'i kaldırıldı ---
 api_router = APIRouter()
 
