@@ -109,24 +109,24 @@ const AuditLogs = () => {
           <h2 className="text-lg font-semibold">Filtreler</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          <Select value={filters.action} onValueChange={(value) => setFilters({...filters, action: value})}>
+          <Select value={filters.action || "all"} onValueChange={(value) => setFilters({...filters, action: value === "all" ? "" : value})}>
             <SelectTrigger>
               <SelectValue placeholder="İşlem Tipi" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tümü</SelectItem>
+              <SelectItem value="all">Tümü</SelectItem>
               <SelectItem value="CREATE">Oluşturma</SelectItem>
               <SelectItem value="UPDATE">Güncelleme</SelectItem>
               <SelectItem value="DELETE">Silme</SelectItem>
             </SelectContent>
           </Select>
 
-          <Select value={filters.resource_type} onValueChange={(value) => setFilters({...filters, resource_type: value})}>
+          <Select value={filters.resource_type || "all"} onValueChange={(value) => setFilters({...filters, resource_type: value === "all" ? "" : value})}>
             <SelectTrigger>
               <SelectValue placeholder="Kaynak Tipi" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tümü</SelectItem>
+              <SelectItem value="all">Tümü</SelectItem>
               <SelectItem value="APPOINTMENT">Randevu</SelectItem>
               <SelectItem value="SETTINGS">Ayarlar</SelectItem>
               <SelectItem value="CUSTOMER">Müşteri</SelectItem>
