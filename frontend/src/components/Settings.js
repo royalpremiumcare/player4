@@ -27,8 +27,11 @@ const Settings = () => {
     customer_can_choose_staff: false,
     admin_provides_service: true,
     
-    // SMS Hatırlatma
+    // SMS Ayarları
     sms_reminder_hours: 1.0,
+    sms_confirmation_template: "",
+    sms_cancellation_template: "",
+    sms_completion_template: "",
   });
   
   const [loading, setLoading] = useState(false);
