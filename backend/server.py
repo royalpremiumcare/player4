@@ -576,8 +576,26 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
 @api_router.delete("/appointments/{appointment_id}")
 async def delete_appointment(request: Request, appointment_id: str, current_user: UserInDB = Depends(get_current_user)):
     db = await get_db_from_request(request); query = {"id": appointment_id, "organization_id": current_user.organization_id}
+    
+    # Get appointment before deleting (for audit log)
+    appointment = await db.appointments.find_one(query, {"_id": 0})
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Randevu bulunamadı")
+    
     result = await db.appointments.delete_one(query)
-    if result.deleted_count == 0: raise HTTPException(status_code=404, detail="Randevu bulunamadı")
+    
+    # Audit log
+    await create_audit_log(
+        db=db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.username,
+        user_full_name=current_user.full_name or current_user.username,
+        action="DELETE",
+        resource_type="APPOINTMENT",
+        resource_id=appointment_id,
+        old_value=appointment,
+        ip_address=request.client.host if request.client else None
+    )
     
     # Emit WebSocket event for real-time update
     await emit_to_organization(
