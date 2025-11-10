@@ -248,13 +248,22 @@ const Customers = () => {
                         </button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2 items-center">
                       <Badge variant="secondary">
                         {customer.totalAppointments} Randevu
                       </Badge>
                       <Badge variant="success">
                         {customer.completedAppointments} Tamamlandı
                       </Badge>
+                      <Button
+                        data-testid={`delete-customer-${customer.phone}`}
+                        onClick={() => setDeleteDialog(customer)}
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
 
