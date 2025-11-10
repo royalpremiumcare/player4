@@ -379,6 +379,39 @@ def slugify(text: str) -> str:
     text = re.sub(r'[^a-z0-9]+', '', text)
     return text
 
+# === AUDIT LOG HELPER ===
+async def create_audit_log(
+    db,
+    organization_id: str,
+    user_id: str,
+    user_full_name: str,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    old_value: Optional[dict] = None,
+    new_value: Optional[dict] = None,
+    ip_address: Optional[str] = None
+):
+    """Denetim günlüğü kaydı oluştur"""
+    try:
+        audit_log = AuditLog(
+            organization_id=organization_id,
+            user_id=user_id,
+            user_full_name=user_full_name,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            old_value=old_value,
+            new_value=new_value,
+            ip_address=ip_address
+        )
+        doc = audit_log.model_dump()
+        doc['timestamp'] = doc['timestamp'].isoformat()
+        await db.audit_logs.insert_one(doc)
+        logger.info(f"Audit log created: {action} {resource_type} by {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to create audit log: {e}")
+
 # === VERİ MODELLERİ (Aynı kaldı) ===
 class User(BaseModel):
     username: str; full_name: Optional[str] = None; organization_id: str = Field(default_factory=lambda: str(uuid.uuid4())); role: str = "admin"; slug: Optional[str] = None; permitted_service_ids: List[str] = [] 
