@@ -115,7 +115,7 @@ function App() {
     
     // Initialize Socket.IO connection
     const socket = io(socketUrl, {
-      path: '/socket.io/',
+      path: '/api/socket.io/',
       transports: ['websocket', 'polling'],
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
