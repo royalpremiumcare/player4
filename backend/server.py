@@ -183,9 +183,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Randevu SaaS API", description="... (Açıklamanız buradaydı) ...", version="1.4.2 (Final Fixes)", lifespan=lifespan)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Static files serving for logos
-app.mount("/static", StaticFiles(directory="/app/backend/static"), name="static")
-
 # --- Router prefix'i kaldırıldı ---
 api_router = APIRouter()
 
