@@ -16,9 +16,9 @@ async def test_simple_connection():
     
     # Test 1: Check if Socket.IO endpoint responds
     try:
-        response = requests.get(f"{BACKEND_URL}/socket.io/", timeout=5)
+        response = requests.get(f"{API_BACKEND_URL}/socket.io/", timeout=5)
         print(f"Socket.IO endpoint status: {response.status_code}")
-        print(f"Response headers: {dict(response.headers)}")
+        print(f"Response text: {response.text}")
     except Exception as e:
         print(f"❌ Socket.IO endpoint error: {e}")
         return False
