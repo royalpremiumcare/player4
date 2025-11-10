@@ -151,6 +151,14 @@ async def lifespan(app: FastAPI):
         app.state.limiter = initialize_limiter(app.redis_client); logging.info("Step 3 SUCCESS: Rate Limiter initialized.")
     except Exception as e:
         logging.warning(f"WARNING during Rate Limiter initialization: {type(e).__name__}: {str(e)}"); app.state.limiter = None
+    
+    try:
+        logging.info("Step 4: Starting SMS Reminder Scheduler...")
+        scheduler.add_job(check_and_send_reminders, IntervalTrigger(minutes=5), id='sms_reminder_job')
+        scheduler.start()
+        logging.info("Step 4 SUCCESS: SMS Reminder Scheduler started (runs every 5 minutes)")
+    except Exception as e:
+        logging.warning(f"WARNING during Scheduler initialization: {type(e).__name__}: {str(e)}")
 
     yield
 
