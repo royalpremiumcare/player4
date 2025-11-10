@@ -37,6 +37,10 @@ const Dashboard = ({ appointments, stats, onEditAppointment, onNewAppointment, o
   const [searchTerm, setSearchTerm] = useState("");
   const [showSearchDialog, setShowSearchDialog] = useState(false);
   const [staffMembers, setStaffMembers] = useState([]);
+  const [services, setServices] = useState([]);
+  const [selectedStaffFilter, setSelectedStaffFilter] = useState("all");
+  const [selectedServiceFilter, setSelectedServiceFilter] = useState("all");
+  const [currentUserFullName, setCurrentUserFullName] = useState("");
 
   const today = format(new Date(), "yyyy-MM-dd");
   
