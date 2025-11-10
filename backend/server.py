@@ -651,6 +651,14 @@ async def create_appointment(request: Request, appointment: AppointmentCreate, c
         )
     
     send_sms(appointment.phone, sms_message)
+    
+    # Emit WebSocket event for real-time update
+    await emit_to_organization(
+        current_user.organization_id,
+        'appointment_created',
+        {'appointment': doc}
+    )
+    
     return appointment_obj
 
 @api_router.get("/appointments", response_model=List[Appointment])
