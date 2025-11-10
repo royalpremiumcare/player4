@@ -162,7 +162,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # --- SyntaxError'ı düzelten, okunabilir cleanup blokları ---
+    # --- Cleanup blokları ---
+    if scheduler.running:
+        logging.info("Stopping SMS Reminder Scheduler...")
+        try: scheduler.shutdown()
+        except: pass
     if app.mongodb_client:
         logging.info("Closing MongoDB connection...")
         try: app.mongodb_client.close()
@@ -171,7 +175,6 @@ async def lifespan(app: FastAPI):
         logging.info("Closing Redis connection...")
         try: await app.redis_client.close()
         except: pass
-    # --- Düzeltme Sonu ---
 
 # Create the main app
 app = FastAPI(title="Randevu SaaS API", description="... (Açıklamanız buradaydı) ...", version="1.4.2 (Final Fixes)", lifespan=lifespan)
