@@ -716,6 +716,19 @@ async def create_appointment(request: Request, appointment: AppointmentCreate, c
     
     send_sms(appointment.phone, sms_message)
     
+    # Audit log
+    await create_audit_log(
+        db=db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.username,
+        user_full_name=current_user.full_name or current_user.username,
+        action="CREATE",
+        resource_type="APPOINTMENT",
+        resource_id=appointment_obj.id,
+        new_value=doc,
+        ip_address=request.client.host if request.client else None
+    )
+    
     # Emit WebSocket event for real-time update
     await emit_to_organization(
         current_user.organization_id,
