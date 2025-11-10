@@ -80,16 +80,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
   
-  const register = async (username, password, full_name, organization_name, support_phone) => {
+  const register = async (username, password, full_name, organization_name, support_phone, sector) => {
     try {
-      console.log('🔵 AuthContext: Register isteği başlıyor...', { username, full_name, organization_name, support_phone });
+      console.log('🔵 AuthContext: Register isteği başlıyor...', { username, full_name, organization_name, support_phone, sector });
       
       const response = await api.post('/register', { 
         username, 
         password, 
         full_name, 
         organization_name,
-        support_phone
+        support_phone,
+        sector
       });
       
       console.log('✅ AuthContext: Register başarılı', response.data);
