@@ -38,7 +38,8 @@ const RegisterPage = () => {
                 formData.password, 
                 formData.full_name, 
                 formData.organization_name,
-                formData.support_phone
+                formData.support_phone,
+                formData.sector
             );
             
             console.log('📦 Register result:', result);
