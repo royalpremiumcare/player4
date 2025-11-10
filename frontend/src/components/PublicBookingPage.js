@@ -222,7 +222,7 @@ const PublicBookingPageV2 = () => {
                 {business.logo_url && (
                   <div className="flex-shrink-0">
                     <img 
-                      src={business.logo_url} 
+                      src={`${BACKEND_URL}${business.logo_url}`}
                       alt={business.business_name}
                       className="w-16 h-16 md:w-20 md:h-20 object-contain rounded-lg border-2 border-blue-200 bg-white"
                     />
