@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings as SettingsIcon, Clock, Save, Phone, Mail, MessageSquare, Users } from "lucide-react"; 
+import { Settings as SettingsIcon, Clock, Save, Phone, Mail, MessageSquare, Users, Upload, Image } from "lucide-react"; 
 import { toast } from "sonner";
 import api from "../api/api";
 import { Button } from "@/components/ui/button";
