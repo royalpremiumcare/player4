@@ -243,35 +243,73 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
         </div>
       )}
 
-      {/* Header with Add Button and Menu */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h3 className="text-xl font-bold text-gray-900">Randevularınızı Yönetin</h3>
-          <p className="text-sm text-gray-600 mt-1">Filtreleyerek arama yapabilirsiniz</p>
+      {/* Compact Header with Actions */}
+      <div className="flex flex-col gap-3">
+        {/* Top Bar: New Appointment + Actions */}
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-gray-900">Randevular</h3>
+          <div className="flex gap-2">
+            <Button onClick={onNewAppointment} size="sm" className="bg-blue-500 hover:bg-blue-600" data-testid="add-appointment-button">
+              + Yeni
+            </Button>
+            <Button onClick={onRefresh} size="sm" variant="outline" data-testid="refresh-button">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </Button>
+            <Button onClick={() => setShowSearchDialog(!showSearchDialog)} size="sm" variant="outline">
+              <Search className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button
-            data-testid="add-appointment-button"
-            onClick={onNewAppointment}
-            className="bg-blue-500 hover:bg-blue-600 text-white shadow-md"
-          >
-            + Yeni Randevu
-          </Button>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" data-testid="menu-button">
-                <MoreVertical className="w-4 h-4" />
+
+        {/* Filters Row (Compact) - Admin only */}
+        {userRole === 'admin' && staffMembers.length > 0 && (
+          <div className="flex flex-wrap gap-2 items-center p-2 bg-purple-50 rounded-lg border border-purple-200">
+            <span className="text-xs text-gray-600 font-medium">Filtre:</span>
+            <Select value={selectedStaffFilter} onValueChange={setSelectedStaffFilter}>
+              <SelectTrigger className="h-8 w-[140px] text-xs">
+                <SelectValue placeholder="Personel" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tüm Personel</SelectItem>
+                {staffMembers.map((staff) => (
+                  <SelectItem key={staff.username} value={staff.username}>
+                    {staff.full_name || staff.username}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedServiceFilter} onValueChange={setSelectedServiceFilter}>
+              <SelectTrigger className="h-8 w-[140px] text-xs">
+                <SelectValue placeholder="Hizmet" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tüm Hizmet</SelectItem>
+                {services.map((service) => (
+                  <SelectItem key={service.id} value={service.id}>
+                    {service.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {(selectedStaffFilter !== "all" || selectedServiceFilter !== "all") && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setSelectedStaffFilter("all");
+                  setSelectedServiceFilter("all");
+                }}
+                className="h-7 text-xs text-purple-600 hover:text-purple-700"
+              >
+                Temizle
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => setShowSearchDialog(true)} data-testid="search-menu-item">
-                <Search className="w-4 h-4 mr-2" />
-                Ara
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Search Dialog */}
