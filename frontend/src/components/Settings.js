@@ -306,7 +306,6 @@ const Settings = () => {
                 </p>
               </div>
             </div>
-          </div>
             
             {/* Logo Upload */}
             <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
