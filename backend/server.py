@@ -499,7 +499,14 @@ async def update_appointment(request: Request, appointment_id: str, appointment_
         except Exception as e: logging.error(f"Tamamlandı SMS'i gönderilirken hata oluştu: {e}")
     elif new_status == 'İptal' and old_status != 'İptal':
         try:
-            sms_message = (f"Sayın {appointment['customer_name']},\n\n" f"{company_name} randevunuz talebiniz doğrultusunda iptal edilmiştir.\n\n" f"Yeni bir tarih planlamak veya bilgi almak için bizimle iletişime geçebilirsiniz.\n\n" f"Müşteri memnuniyetine verdiğimiz önem doğrultusunda her zaman hizmetinizdeyiz.\n\n" f"📞 İletişim: {support_phone}\n\n" f"— {company_name}")
+            # İptal SMS'i - Sade ve kısa
+            sms_message = (
+                f"Sayın {appointment['customer_name']},\n\n"
+                f"{company_name} randevunuz iptal edildi.\n\n"
+                f"Tarih: {appointment['appointment_date']}\n"
+                f"Saat: {appointment['appointment_time']}\n\n"
+                f"Bilgi: {support_phone}"
+            )
             send_sms(appointment['phone'], sms_message)
         except Exception as e: logging.error(f"İptal SMS'i gönderilirken hata oluştu: {e}")
     if update_data: await db.appointments.update_one(query, {"$set": update_data})
