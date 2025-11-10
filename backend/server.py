@@ -1474,3 +1474,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], 
     allow_headers=["*"],
 )
+
+# Export socket_app as the main application for ASGI servers
+# This allows both FastAPI and Socket.IO to work together
+application = socket_app
