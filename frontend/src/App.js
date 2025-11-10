@@ -458,6 +458,7 @@ function App() {
         {currentView === "services" && userRole === 'admin' && ( <ServiceManagement services={services} onRefresh={loadServices} /> )}
         {currentView === "staff" && userRole === 'admin' && ( <StaffManagement /> )}
         {currentView === "cash" && userRole === 'admin' && ( <CashRegister /> )}
+        {currentView === "audit" && userRole === 'admin' && ( <AuditLogs /> )}
         {currentView === "import" && userRole === 'admin' && (
           <ImportData
             onImportComplete={() => {
