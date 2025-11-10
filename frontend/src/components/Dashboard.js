@@ -42,6 +42,7 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
   const [selectedStaffFilter, setSelectedStaffFilter] = useState("all");
   const [selectedServiceFilter, setSelectedServiceFilter] = useState("all");
   const [currentUserFullName, setCurrentUserFullName] = useState("");
+  const [settings, setSettings] = useState(null);
 
   const today = format(new Date(), "yyyy-MM-dd");
   
@@ -49,6 +50,7 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
     loadStaffMembers();
     loadServices();
     loadCurrentUserInfo();
+    loadSettings();
   }, []);
 
   const loadStaffMembers = async () => {
