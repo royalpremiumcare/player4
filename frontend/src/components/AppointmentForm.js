@@ -241,32 +241,107 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
 
       <Card className="p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="customer_name">Müşteri Adı *</Label>
-              <Input
-                id="customer_name"
-                data-testid="customer-name-input"
-                value={formData.customer_name}
-                onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-                placeholder="Ad Soyad"
-                required
-              />
+          {/* Müşteri Seçimi Toggle (Sadece yeni randevu için) */}
+          {!appointment && customers.length > 0 && (
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-4">
+                <Label className="font-semibold text-gray-900">Müşteri Türü:</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isNewCustomer ? "default" : "outline"}
+                    onClick={() => {
+                      setIsNewCustomer(true);
+                      setSelectedCustomer("");
+                      setFormData({ ...formData, customer_name: "", phone: "" });
+                    }}
+                  >
+                    Yeni Müşteri
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={!isNewCustomer ? "default" : "outline"}
+                    onClick={() => setIsNewCustomer(false)}
+                  >
+                    Mevcut Müşteri
+                  </Button>
+                </div>
+              </div>
             </div>
+          )}
 
+          {/* Mevcut Müşteri Seçimi */}
+          {!appointment && !isNewCustomer && customers.length > 0 && (
             <div className="space-y-2">
-              <Label htmlFor="phone">Telefon *</Label>
-              <Input
-                id="phone"
-                data-testid="phone-input"
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="05XX XXX XX XX"
-                required
-              />
+              <Label htmlFor="existing_customer">Müşteri Seç *</Label>
+              <Select
+                value={selectedCustomer}
+                onValueChange={(value) => {
+                  setSelectedCustomer(value);
+                  const customer = customers.find(c => c.phone === value);
+                  if (customer) {
+                    setFormData({
+                      ...formData,
+                      customer_name: customer.name,
+                      phone: customer.phone
+                    });
+                  }
+                }}
+              >
+                <SelectTrigger data-testid="existing-customer-select">
+                  <SelectValue placeholder="Müşteri seçin..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {customers.map((customer) => (
+                    <SelectItem key={customer.phone} value={customer.phone}>
+                      {customer.name} - {customer.phone} ({customer.total_appointments} randevu)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </div>
+          )}
+
+          {/* Müşteri Bilgileri (Yeni Müşteri veya Düzenleme) */}
+          {(isNewCustomer || appointment) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="customer_name">Müşteri Adı *</Label>
+                <Input
+                  id="customer_name"
+                  data-testid="customer-name-input"
+                  value={formData.customer_name}
+                  onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+                  placeholder="Ad Soyad"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone">Telefon *</Label>
+                <Input
+                  id="phone"
+                  data-testid="phone-input"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="05XX XXX XX XX"
+                  required
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Seçili Mevcut Müşteri Bilgileri (Salt Okunur) */}
+          {!appointment && !isNewCustomer && selectedCustomer && (
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              <p className="text-sm text-green-800">
+                <strong>Seçili Müşteri:</strong> {formData.customer_name} - {formData.phone}
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="service">Hizmet Türü *</Label>
