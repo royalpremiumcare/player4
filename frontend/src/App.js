@@ -45,7 +45,6 @@ function App() {
     loadSettings();
     if (userRole === 'admin') {
       loadStats();
-      initializeDefaultServices();
     }
   }, [userRole]); 
 
