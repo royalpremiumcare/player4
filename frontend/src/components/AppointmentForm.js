@@ -36,6 +36,9 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
   const [loading, setLoading] = useState(false);
   const [filteredServices, setFilteredServices] = useState([]);
   const [qualifiedStaff, setQualifiedStaff] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [isNewCustomer, setIsNewCustomer] = useState(true);
+  const [selectedCustomer, setSelectedCustomer] = useState("");
 
   useEffect(() => {
     loadCurrentUser();
