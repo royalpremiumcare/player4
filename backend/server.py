@@ -24,6 +24,7 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+import socketio
 
 # (Cache ve Rate Limit importları, sizin projenizden alındı)
 from cache import init_redis, invalidate_cache, cache_result
