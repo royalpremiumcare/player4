@@ -40,7 +40,7 @@ async def test_simple_connection():
             print(f"✅ Connection established: {data}")
         
         print("Attempting to connect...")
-        await sio.connect(BACKEND_URL, wait_timeout=10)
+        await sio.connect(API_BACKEND_URL, wait_timeout=10)
         
         print("Waiting 5 seconds...")
         await asyncio.sleep(5)
