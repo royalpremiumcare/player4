@@ -135,6 +135,15 @@ function App() {
     };
   }, [isRefreshing, userRole]); 
 
+  const loadSettings = async () => {
+    try {
+      const response = await api.get("/settings");
+      setSettings(response.data);
+    } catch (error) {
+      console.error("Settings yüklenemedi:", error);
+    }
+  };
+
   const initializeDefaultServices = async () => {
     try {
       const response = await api.get("/services"); 
