@@ -101,6 +101,39 @@ const RegisterPage = () => {
                             </div>
 
                             <div className="space-y-2">
+                                <Label htmlFor="sector" className="text-sm font-semibold text-gray-700">
+                                    Sektör
+                                </Label>
+                                <Select
+                                    value={formData.sector}
+                                    onValueChange={(value) => setFormData({ ...formData, sector: value })}
+                                >
+                                    <SelectTrigger className="h-12 border-2 focus:border-gray-900">
+                                        <SelectValue placeholder="Sektörünüzü seçin" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Kuaför">Kuaför</SelectItem>
+                                        <SelectItem value="Güzellik Salonu">Güzellik Salonu</SelectItem>
+                                        <SelectItem value="Masaj / SPA">Masaj / SPA</SelectItem>
+                                        <SelectItem value="Diyetisyen">Diyetisyen</SelectItem>
+                                        <SelectItem value="Psikolog / Danışmanlık">Psikolog / Danışmanlık</SelectItem>
+                                        <SelectItem value="Diş Klinikleri">Diş Klinikleri</SelectItem>
+                                        <SelectItem value="Diğer/Boş">Diğer/Boş</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {formData.sector === "Diğer/Boş" && (
+                                    <p className="text-xs text-amber-600 mt-1">
+                                        ⚠️ Kendi hizmetlerinizi manuel olarak oluşturmanız gerekecek
+                                    </p>
+                                )}
+                                {formData.sector && formData.sector !== "Diğer/Boş" && (
+                                    <p className="text-xs text-green-600 mt-1">
+                                        ✅ Sektörünüze özel varsayılan hizmetler otomatik yüklenecek
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
                                 <Label htmlFor="full_name" className="text-sm font-semibold text-gray-700">
                                     Ad Soyad
                                 </Label>
