@@ -986,6 +986,21 @@ async def update_settings(request: Request, settings: Settings, current_user: Us
     
     await db.settings.update_one(query, {"$set": update_data}, upsert=True)
     updated_settings = await db.settings.find_one(query, {"_id": 0})
+    
+    # Audit log
+    await create_audit_log(
+        db=db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.username,
+        user_full_name=current_user.full_name or current_user.username,
+        action="UPDATE",
+        resource_type="SETTINGS",
+        resource_id=current_user.organization_id,
+        old_value=current_settings,
+        new_value=updated_settings,
+        ip_address=request.client.host if request.client else None
+    )
+    
     return Settings(**updated_settings)
 
 @api_router.post("/settings/logo")
