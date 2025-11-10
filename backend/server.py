@@ -1,7 +1,10 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Response 
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Response, File, UploadFile
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
+from pathlib import Path
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
