@@ -246,12 +246,24 @@ function App() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                <Calendar className="w-6 h-6 text-white" />
-              </div>
+              {/* Logo - Eğer yüklenmişse göster */}
+              {settings?.logo_url ? (
+                <div className="w-12 h-12 md:w-14 md:h-14 flex-shrink-0">
+                  <img 
+                    src={`${process.env.REACT_APP_BACKEND_URL || ''}${settings.logo_url}`}
+                    alt={settings.company_name || 'Logo'}
+                    className="w-full h-full object-contain rounded-lg border-2 border-blue-200 bg-white"
+                  />
+                </div>
+              ) : (
+                <div className="bg-blue-600 p-2 rounded-lg">
+                  <Calendar className="w-6 h-6 text-white" />
+                </div>
+              )}
+              
               <div>
                 <h1 className="text-xl font-bold text-blue-900 dark:text-blue-100" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-                  Royal Koltuk Yıkama
+                  {settings?.company_name || 'Royal Koltuk Yıkama'}
                 </h1>
                 <p className="text-xs text-blue-600 dark:text-blue-300">Randevu Yönetim Sistemi</p>
               </div>
