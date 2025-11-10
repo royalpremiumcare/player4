@@ -312,6 +312,24 @@ const Settings = () => {
                 onCheckedChange={(checked) => setSettings({ ...settings, customer_can_choose_staff: checked })}
               />
             </div>
+
+            <div className="flex items-center justify-between p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+              <div>
+                <Label htmlFor="admin-service" className="text-base font-medium text-gray-900">
+                  İşletme Sahibi Hizmet Verir
+                </Label>
+                <p className="text-sm text-gray-600 mt-1">
+                  {settings.admin_provides_service 
+                    ? "✅ AÇIK: Siz de randevu alabilirsiniz (ör: Kuaför sahibi)" 
+                    : "❌ KAPALI: Sadece yönetici olarak çalışıyorsunuz"}
+                </p>
+              </div>
+              <Switch
+                id="admin-service"
+                checked={settings.admin_provides_service !== false}
+                onCheckedChange={(checked) => setSettings({ ...settings, admin_provides_service: checked })}
+              />
+            </div>
           </div>
 
           <div>
