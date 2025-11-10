@@ -2,8 +2,8 @@ import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL !== undefined ? process.env.REACT_APP_BACKEND_URL : 'http://localhost:8001';
 
-// BACKEND_URL kontrolü
-if (!process.env.REACT_APP_BACKEND_URL) {
+// BACKEND_URL kontrolü (sadece undefined ise uyar, empty string geçerli)
+if (process.env.REACT_APP_BACKEND_URL === undefined) {
   console.warn('⚠️ REACT_APP_BACKEND_URL tanımlı değil! Varsayılan olarak http://localhost:8001 kullanılıyor.');
   console.warn('Lütfen frontend/.env dosyasında REACT_APP_BACKEND_URL değişkenini tanımlayın.');
 }
