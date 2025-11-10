@@ -583,6 +583,14 @@ async def update_appointment(request: Request, appointment_id: str, appointment_
     if update_data: await db.appointments.update_one(query, {"$set": update_data})
     updated_appointment = await db.appointments.find_one(query, {"_id": 0})
     if isinstance(updated_appointment['created_at'], str): updated_appointment['created_at'] = datetime.fromisoformat(updated_appointment['created_at'])
+    
+    # Emit WebSocket event for real-time update
+    await emit_to_organization(
+        current_user.organization_id,
+        'appointment_updated',
+        {'appointment': updated_appointment}
+    )
+    
     return updated_appointment
 
 @api_router.get("/appointments/{appointment_id}", response_model=Appointment)
