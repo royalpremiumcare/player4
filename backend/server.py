@@ -530,6 +530,14 @@ async def delete_appointment(request: Request, appointment_id: str, current_user
     db = await get_db_from_request(request); query = {"id": appointment_id, "organization_id": current_user.organization_id}
     result = await db.appointments.delete_one(query)
     if result.deleted_count == 0: raise HTTPException(status_code=404, detail="Randevu bulunamadı")
+    
+    # Emit WebSocket event for real-time update
+    await emit_to_organization(
+        current_user.organization_id,
+        'appointment_deleted',
+        {'appointment_id': appointment_id}
+    )
+    
     return {"message": "Randevu silindi"}
 
 @api_router.put("/appointments/{appointment_id}", response_model=Appointment)
