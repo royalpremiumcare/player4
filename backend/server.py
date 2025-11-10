@@ -380,6 +380,22 @@ def slugify(text: str) -> str:
     return text
 
 # === AUDIT LOG HELPER ===
+def clean_dict_for_audit(data: Optional[dict]) -> Optional[dict]:
+    """MongoDB ObjectID'lerini temizle"""
+    if not data:
+        return data
+    cleaned = {}
+    for key, value in data.items():
+        if key == '_id':
+            continue  # MongoDB _id'yi atla
+        if isinstance(value, dict):
+            cleaned[key] = clean_dict_for_audit(value)
+        elif isinstance(value, list):
+            cleaned[key] = [clean_dict_for_audit(item) if isinstance(item, dict) else item for item in value]
+        else:
+            cleaned[key] = value
+    return cleaned
+
 async def create_audit_log(
     db,
     organization_id: str,
@@ -394,6 +410,10 @@ async def create_audit_log(
 ):
     """Denetim günlüğü kaydı oluştur"""
     try:
+        # Clean values
+        cleaned_old = clean_dict_for_audit(old_value)
+        cleaned_new = clean_dict_for_audit(new_value)
+        
         audit_log = AuditLog(
             organization_id=organization_id,
             user_id=user_id,
@@ -401,8 +421,8 @@ async def create_audit_log(
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,
-            old_value=old_value,
-            new_value=new_value,
+            old_value=cleaned_old,
+            new_value=cleaned_new,
             ip_address=ip_address
         )
         doc = audit_log.model_dump()
