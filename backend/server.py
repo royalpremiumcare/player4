@@ -907,6 +907,7 @@ async def get_public_business(request: Request, slug: str):
     
     return {
         "business_name": settings.get('company_name', admin_user.get('full_name', 'İşletme')),
+        "logo_url": settings.get('logo_url'),
         "organization_id": organization_id,
         "services": services,
         "staff_members": staff_members,
