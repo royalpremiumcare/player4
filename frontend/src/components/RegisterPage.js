@@ -17,7 +17,8 @@ const RegisterPage = () => {
         password: '',
         full_name: '',
         organization_name: '',
-        support_phone: ''
+        support_phone: '',
+        sector: ''
     });
     const [loading, setLoading] = useState(false);
 
