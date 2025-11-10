@@ -54,6 +54,73 @@ ILETIMERKEZI_HASH = os.environ.get('ILETIMERKEZI_HASH')
 ILETIMERKEZI_SENDER = os.environ.get('ILETIMERKEZI_SENDER', 'FatihSenyuz') 
 SMS_ENABLED = os.environ.get('SMS_ENABLED', 'true').lower() in ('1', 'true', 'yes')
 
+# === SMS REMINDER SCHEDULER ===
+scheduler = AsyncIOScheduler()
+
+async def check_and_send_reminders():
+    """Her 5 dakikada bir yaklaşan randevuları kontrol et ve SMS gönder"""
+    try:
+        if not _mongo_db:
+            return
+        
+        turkey_tz = ZoneInfo("Europe/Istanbul")
+        now = datetime.now(turkey_tz)
+        
+        # Tüm organization'ların ayarlarını al
+        all_settings = await _mongo_db.settings.find({}, {"_id": 0}).to_list(1000)
+        
+        for setting in all_settings:
+            org_id = setting.get('organization_id')
+            reminder_hours = setting.get('sms_reminder_hours', 1.0)
+            company_name = setting.get('company_name', 'İşletmeniz')
+            support_phone = setting.get('support_phone', 'Destek')
+            
+            # Hatırlatma zaman aralığını hesapla
+            reminder_time_start = now + timedelta(hours=reminder_hours - 0.1)  # 6 dakika tolerance
+            reminder_time_end = now + timedelta(hours=reminder_hours + 0.1)
+            
+            # Bu zaman aralığındaki randevuları bul
+            appointments = await _mongo_db.appointments.find({
+                "organization_id": org_id,
+                "status": "Bekliyor",
+                "reminder_sent": {"$ne": True}  # Daha önce hatırlatma gönderilmemiş
+            }, {"_id": 0}).to_list(1000)
+            
+            for apt in appointments:
+                try:
+                    # Randevu zamanını parse et
+                    apt_datetime_str = f"{apt['appointment_date']} {apt['appointment_time']}"
+                    apt_datetime = datetime.strptime(apt_datetime_str, "%Y-%m-%d %H:%M").replace(tzinfo=turkey_tz)
+                    
+                    # Hatırlatma zamanı geldi mi?
+                    if reminder_time_start <= apt_datetime <= reminder_time_end:
+                        # SMS gönder
+                        sms_message = (
+                            f"Sayın {apt['customer_name']},\n\n"
+                            f"{company_name} randevunuz {reminder_hours} saat sonra!\n\n"
+                            f"Tarih: {apt['appointment_date']}\n"
+                            f"Saat: {apt['appointment_time']}\n"
+                            f"Hizmet: {apt['service_name']}\n\n"
+                            f"Bilgi: {support_phone}\n\n"
+                            f"— {company_name}"
+                        )
+                        
+                        send_sms(apt['phone'], sms_message)
+                        
+                        # Hatırlatma gönderildi olarak işaretle
+                        await _mongo_db.appointments.update_one(
+                            {"id": apt['id']},
+                            {"$set": {"reminder_sent": True}}
+                        )
+                        
+                        logging.info(f"SMS reminder sent to {apt['customer_name']} for appointment {apt['id']}")
+                
+                except Exception as e:
+                    logging.error(f"Error sending reminder for appointment {apt.get('id')}: {e}")
+    
+    except Exception as e:
+        logging.error(f"Error in check_and_send_reminders: {e}")
+
 # === MongoDB ve Redis Yaşam Döngüsü (Lifespan) --- SYNTAX HATASI DÜZELTİLDİ ===
 @asynccontextmanager
 async def lifespan(app: FastAPI):
