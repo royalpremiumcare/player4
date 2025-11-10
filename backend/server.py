@@ -1119,6 +1119,9 @@ async def options_handler(response: Response, request: Request):
 # --- Router prefix'i buraya taşındı ---
 app.include_router(api_router, prefix="/api")
 
+# Static files serving for logos (must be after router)
+app.mount("/api/static", StaticFiles(directory="/app/backend/static"), name="static")
+
 # --- CORS Ayarı ---
 cors_origins_str = os.environ.get('CORS_ORIGINS', '*'); cors_origins = ['*'] if cors_origins_str == '*' else [origin.strip() for origin in cors_origins_str.split(',') if origin.strip()]
 logging.info(f"CORS origins configured: {cors_origins}")
