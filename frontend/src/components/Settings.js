@@ -116,6 +116,17 @@ const Settings = () => {
                   required
                 />
                 <p className="text-xs text-gray-500">Müşterilerinize gönderilen SMS'lerde yer alır.</p>
+                {settings.slug && (
+                  <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                    <p className="text-xs text-blue-700">
+                      <strong>Public Booking Linkiniz:</strong><br/>
+                      <code className="text-xs">/book/{settings.slug}</code>
+                    </p>
+                    <p className="text-xs text-amber-600 mt-1">
+                      ⚠️ İşletme adını değiştirirseniz link otomatik güncellenir
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
