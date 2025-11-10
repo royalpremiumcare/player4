@@ -158,6 +158,30 @@ const Settings = () => {
                 />
                 <p className="text-xs text-gray-500">Hizmet sonrası müşteriye gönderilen link.</p>
               </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="sms-reminder">
+                  <MessageSquare className="w-4 h-4 inline mr-2" />
+                  SMS Hatırlatma (Saat Önce)
+                </Label>
+                <select
+                  id="sms-reminder"
+                  value={settings.sms_reminder_hours}
+                  onChange={(e) => setSettings({ ...settings, sms_reminder_hours: parseFloat(e.target.value) })}
+                  className="w-full px-3 py-2 border rounded-md"
+                >
+                  <option value="0.5">30 Dakika Önce</option>
+                  <option value="1">1 Saat Önce</option>
+                  <option value="2">2 Saat Önce</option>
+                  <option value="3">3 Saat Önce</option>
+                  <option value="6">6 Saat Önce</option>
+                  <option value="12">12 Saat Önce</option>
+                  <option value="24">24 Saat Önce</option>
+                </select>
+                <p className="text-xs text-gray-500">
+                  Randevudan kaç saat önce hatırlatma SMS'i gönderilsin
+                </p>
+              </div>
             </div>
           </div>
           
