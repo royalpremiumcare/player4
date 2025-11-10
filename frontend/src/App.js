@@ -108,15 +108,77 @@ function App() {
     };
   }, [userRole]); 
 
+  // WebSocket setup for real-time updates
   useEffect(() => {
-    const refreshInterval = setInterval(() => {
-      if (document.visibilityState === 'visible' && !isRefreshing) {
-        loadAppointments();
-        if (userRole === 'admin') {
-          loadStats();
+    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+    const socketUrl = BACKEND_URL || window.location.origin;
+    
+    // Initialize Socket.IO connection
+    const socket = io(socketUrl, {
+      path: '/socket.io/',
+      transports: ['websocket', 'polling'],
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5
+    });
+    
+    socket.on('connect', () => {
+      console.log('WebSocket connected:', socket.id);
+      
+      // Get organization_id from token
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          const organizationId = payload.org_id;
+          
+          if (organizationId) {
+            socket.emit('join_organization', { organization_id: organizationId });
+          }
+        } catch (error) {
+          console.error('Error parsing token:', error);
         }
       }
-    }, 3000); 
+    });
+    
+    socket.on('disconnect', () => {
+      console.log('WebSocket disconnected');
+    });
+    
+    socket.on('connection_established', (data) => {
+      console.log('Connection established:', data);
+    });
+    
+    socket.on('joined_organization', (data) => {
+      console.log('Joined organization:', data);
+    });
+    
+    // Real-time appointment events
+    socket.on('appointment_created', () => {
+      console.log('Appointment created - reloading data');
+      loadAppointments();
+      if (userRole === 'admin') {
+        loadStats();
+      }
+    });
+    
+    socket.on('appointment_updated', () => {
+      console.log('Appointment updated - reloading data');
+      loadAppointments();
+      if (userRole === 'admin') {
+        loadStats();
+      }
+    });
+    
+    socket.on('appointment_deleted', () => {
+      console.log('Appointment deleted - reloading data');
+      loadAppointments();
+      if (userRole === 'admin') {
+        loadStats();
+      }
+    });
+    
+    // Fallback: visibility and focus events for when user returns to tab
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && !isRefreshing) {
         loadAppointments();
@@ -125,6 +187,7 @@ function App() {
         }
       }
     };
+    
     const handleFocus = () => {
       if (!isRefreshing) {
         loadAppointments();
@@ -133,10 +196,12 @@ function App() {
         }
       }
     };
+    
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
+    
     return () => {
-      clearInterval(refreshInterval);
+      socket.disconnect();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
