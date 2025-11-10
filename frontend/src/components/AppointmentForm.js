@@ -44,6 +44,7 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
     loadCurrentUser();
     loadAllStaff();
     loadSettings();
+    loadCustomers();
     if (appointment) {
       setFormData({
         customer_name: appointment.customer_name,
@@ -54,6 +55,7 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
         staff_member_id: appointment.staff_member_id || "",
         notes: appointment.notes || ""
       });
+      setIsNewCustomer(false);
     }
   }, [appointment]);
 
