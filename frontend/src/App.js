@@ -30,10 +30,12 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
+  const [settings, setSettings] = useState(null);
 
   useEffect(() => {
     loadServices();
     loadAppointments();
+    loadSettings();
     if (userRole === 'admin') {
       loadStats();
       initializeDefaultServices();
