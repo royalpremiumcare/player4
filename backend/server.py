@@ -306,7 +306,12 @@ class TransactionUpdate(BaseModel): amount: float
 class Settings(BaseModel):
     model_config = ConfigDict(extra="ignore"); organization_id: str; id: str = Field(default_factory=lambda: str(uuid.uuid4())); work_start_hour: int = 7; work_end_hour: int = 3; appointment_interval: int = 30
     company_name: str = "İşletmeniz"; support_phone: str = "05000000000"; feedback_url: Optional[str] = None; slug: Optional[str] = None; customer_can_choose_staff: bool = False
-    logo_url: Optional[str] = None; sms_reminder_hours: float = 1.0; sector: Optional[str] = None; admin_provides_service: bool = True  # Admin hizmet verir mi?
+    logo_url: Optional[str] = None; sms_reminder_hours: float = 1.0; sector: Optional[str] = None; admin_provides_service: bool = True
+    # SMS Templates (özelleştirilebilir metinler)
+    sms_confirmation_template: Optional[str] = None
+    sms_cancellation_template: Optional[str] = None
+    sms_completion_template: Optional[str] = None
+    sms_reminder_template: Optional[str] = None
 
 # === GÜVENLİK API ENDPOINT'LERİ ===
 @api_router.post("/register", response_model=User)
