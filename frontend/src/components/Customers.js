@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Users, Phone, MessageSquare, Calendar, Search } from "lucide-react";
+import { Users, Phone, MessageSquare, Calendar, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 // import axios from "axios"; // SİLİNDİ
 import api from "../api/api"; // YENİ EKLENDİ (Token'ı otomatik ekler)
@@ -9,6 +9,16 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // const BACKEND_URL = process.env.REACT_APP_BACKEND_URL; // SİLİNDİ
 // const API = `${BACKEND_URL}/api`; // SİLİNDİ
