@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import "@/App.css";
 import api from "./api/api"; 
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { useAuth } from "./context/AuthContext";
+import { io } from "socket.io-client";
 
 import Dashboard from "@/components/Dashboard";
 import AppointmentForm from "@/components/AppointmentForm";
