@@ -253,18 +253,22 @@ function App() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {/* Logo - Eğer yüklenmişse göster */}
+              {/* Logo - Yüklenmişse göster, yoksa default icon */}
               {settings?.logo_url ? (
-                <div className="w-12 h-12 md:w-14 md:h-14 flex-shrink-0">
+                <div className="w-12 h-12 md:w-14 md:h-14 flex-shrink-0 bg-white rounded-lg border-2 border-blue-200 p-1">
                   <img 
-                    src={`${process.env.REACT_APP_BACKEND_URL || ''}${settings.logo_url}`}
+                    src={getLogoUrl(settings.logo_url)}
                     alt={settings.company_name || 'Logo'}
-                    className="w-full h-full object-contain rounded-lg border-2 border-blue-200 bg-white"
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      console.error('Logo yüklenemedi:', settings.logo_url);
+                      e.target.style.display = 'none';
+                    }}
                   />
                 </div>
               ) : (
-                <div className="bg-blue-600 p-2 rounded-lg">
-                  <Calendar className="w-6 h-6 text-white" />
+                <div className="w-12 h-12 md:w-14 md:h-14 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <Calendar className="w-6 h-6 md:w-7 md:h-7 text-white" />
                 </div>
               )}
               
