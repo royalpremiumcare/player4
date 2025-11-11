@@ -721,9 +721,20 @@ async def create_appointment(request: Request, appointment: AppointmentCreate, c
         if service["id"] not in current_user.permitted_service_ids:
             raise HTTPException(status_code=403, detail="Bu hizmete randevu alma yetkiniz yok")
     
-    existing_query = {"organization_id": current_user.organization_id, "appointment_date": appointment.appointment_date, "appointment_time": appointment.appointment_time, "status": {"$ne": "İptal"}}
+    # Aynı personelin aynı saatte başka randevusu olup olmadığını kontrol et
+    existing_query = {
+        "organization_id": current_user.organization_id,
+        "staff_member_id": appointment.staff_member_id,
+        "appointment_date": appointment.appointment_date,
+        "appointment_time": appointment.appointment_time,
+        "status": {"$ne": "İptal"}
+    }
     existing = await db.appointments.find_one(existing_query)
-    if existing: raise HTTPException(status_code=400, detail=f"{appointment.appointment_date} tarihinde {appointment.appointment_time} saatinde zaten bir randevu var. Lütfen başka bir saat seçin.")
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bu personelin {appointment.appointment_date} tarihinde {appointment.appointment_time} saatinde zaten bir randevusu var. Lütfen başka bir saat seçin."
+        )
     appointment_data = appointment.model_dump(); appointment_data['service_name'] = service['name']; appointment_data['service_price'] = service['price']
     try:
         turkey_tz = ZoneInfo("Europe/Istanbul"); now = datetime.now(turkey_tz); dt_str = f"{appointment.appointment_date} {appointment.appointment_time}"
