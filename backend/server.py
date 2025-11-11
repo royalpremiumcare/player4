@@ -635,11 +635,26 @@ async def update_appointment(request: Request, appointment_id: str, appointment_
     query = {"id": appointment_id, "organization_id": current_user.organization_id}; appointment = await db.appointments.find_one(query, {"_id": 0})
     if not appointment: raise HTTPException(status_code=404, detail="Randevu bulunamadı")
     update_data = {k: v for k, v in appointment_update.model_dump().items() if v is not None}
-    if 'appointment_date' in update_data or 'appointment_time' in update_data:
-        check_date = update_data.get('appointment_date', appointment['appointment_date']); check_time = update_data.get('appointment_time', appointment['appointment_time'])
-        existing_query = {"organization_id": current_user.organization_id, "id": {"$ne": appointment_id}, "appointment_date": check_date, "appointment_time": check_time, "status": {"$ne": "İptal"}}
+    # Tarih/saat veya personel değişikliği varsa çakışma kontrolü yap
+    if 'appointment_date' in update_data or 'appointment_time' in update_data or 'staff_member_id' in update_data:
+        check_date = update_data.get('appointment_date', appointment['appointment_date'])
+        check_time = update_data.get('appointment_time', appointment['appointment_time'])
+        check_staff = update_data.get('staff_member_id', appointment.get('staff_member_id'))
+        
+        existing_query = {
+            "organization_id": current_user.organization_id,
+            "id": {"$ne": appointment_id},
+            "staff_member_id": check_staff,
+            "appointment_date": check_date,
+            "appointment_time": check_time,
+            "status": {"$ne": "İptal"}
+        }
         existing = await db.appointments.find_one(existing_query)
-        if existing: raise HTTPException(status_code=400, detail=f"{check_date} tarihinde {check_time} saatinde zaten bir randevu var. Lütfen başka bir saat seçin.")
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bu personelin {check_date} tarihinde {check_time} saatinde zaten bir randevusu var. Lütfen başka bir saat seçin."
+            )
     if 'service_id' in update_data:
         service_query = {"id": update_data['service_id'], "organization_id": current_user.organization_id}; service = await db.services.find_one(service_query, {"_id": 0})
         if service: update_data['service_name'] = service['name']; update_data['service_price'] = service['price']
