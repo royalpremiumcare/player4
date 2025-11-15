@@ -16,16 +16,17 @@ const api = axios.create({
 // === API REQUEST TUTAMAÇ (INTERCEPTOR) ===
 // Her istekten önce token'ı Authorization başlığına ekler
 api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (config) => {
+    // Önce localStorage'dan kontrol et, yoksa sessionStorage'dan
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
 );
 
 // === API RESPONSE TUTAMAÇ (INTERCEPTOR) ===
@@ -34,14 +35,17 @@ api.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error) => {
-    // 401 Unauthorized hatası geldiğinde otomatik logout
-    if (error.response && error.response.status === 401) {
-      localStorage.removeItem('authToken');
-      window.location.href = '/';
-    }
-    return Promise.reject(error);
-  }
+  (error) => {
+    // 401 Unauthorized hatası geldiğinde otomatik logout
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('userRole');
+      sessionStorage.removeItem('authToken');
+      sessionStorage.removeItem('userRole');
+      window.location.href = '/';
+    }
+    return Promise.reject(error);
+  }
 );
 
 export default api;

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Lock, ArrowRight } from 'lucide-react';
+import api from '../api/api';
 
 const ResetPasswordPage = () => {
   const navigate = useNavigate();
@@ -47,26 +48,14 @@ const ResetPasswordPage = () => {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/reset-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          token: token,
-          new_password: password 
-        }),
+      await api.post('/reset-password', {
+        token: token,
+        new_password: password
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setSuccess(true);
-      } else {
-        setError(data.detail || 'Bir hata oluştu. Lütfen tekrar deneyin.');
-      }
+      setSuccess(true);
     } catch (err) {
-      setError('Bir hata oluştu. Lütfen tekrar deneyin.');
+      const errorMessage = err.response?.data?.detail || 'Bir hata oluştu. Lütfen tekrar deneyin.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

@@ -12,8 +12,9 @@ export const AuthProvider = ({ children }) => {
   const [userRole, setUserRole] = useState(null);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('authToken');
-    const storedRole = localStorage.getItem('userRole');
+    // Önce localStorage'dan kontrol et, yoksa sessionStorage'dan
+    const storedToken = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    const storedRole = localStorage.getItem('userRole') || sessionStorage.getItem('userRole');
     if (storedToken) {
       setToken(storedToken);
       setUserRole(storedRole);
@@ -21,7 +22,7 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const login = async (username, password) => {
+  const login = async (username, password, rememberMe = false) => {
     try {
       // BACKEND_URL boş olabilir (same-origin için geçerli)
       const formData = new URLSearchParams();
@@ -45,8 +46,19 @@ export const AuthProvider = ({ children }) => {
 
       setToken(access_token);
       setUserRole(role);
-      localStorage.setItem('authToken', access_token);
-      localStorage.setItem('userRole', role);
+      
+      // rememberMe durumuna göre localStorage veya sessionStorage kullan
+      if (rememberMe) {
+        localStorage.setItem('authToken', access_token);
+        localStorage.setItem('userRole', role);
+      } else {
+        sessionStorage.setItem('authToken', access_token);
+        sessionStorage.setItem('userRole', role);
+        // localStorage'dan temizle (eğer varsa)
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userRole');
+      }
+      
       setIsAuthenticated(true);
       return { success: true };
 
@@ -76,6 +88,8 @@ export const AuthProvider = ({ children }) => {
       setUserRole(null);
       localStorage.removeItem('authToken');
       localStorage.removeItem('userRole');
+      sessionStorage.removeItem('authToken');
+      sessionStorage.removeItem('userRole');
       return { success: false, error: errorMessage };
     }
   };
@@ -112,6 +126,8 @@ export const AuthProvider = ({ children }) => {
     setUserRole(null);
     localStorage.removeItem('authToken');
     localStorage.removeItem('userRole');
+    sessionStorage.removeItem('authToken');
+    sessionStorage.removeItem('userRole');
     setIsAuthenticated(false);
   };
 

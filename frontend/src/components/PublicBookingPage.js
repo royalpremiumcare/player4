@@ -16,6 +16,11 @@ import { toast, Toaster } from "sonner";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL !== undefined ? process.env.REACT_APP_BACKEND_URL : "";
 const API = `${BACKEND_URL}/api`;
 
+// Public endpoint için axios instance (token gerektirmez)
+const publicApi = axios.create({
+  baseURL: `${BACKEND_URL}/api`,
+});
+
 const PublicBookingPage = () => {
   const { slug } = useParams();
   
@@ -96,7 +101,7 @@ const PublicBookingPage = () => {
 
   const loadBusinessData = async () => {
     try {
-      const response = await axios.get(`${API}/public/business/${slug}`);
+      const response = await publicApi.get(`/public/business/${slug}`);
       const data = response.data;
       
       setBusiness(data);
@@ -129,7 +134,7 @@ const PublicBookingPage = () => {
         params.staff_id = selectedStaff;
       }
       
-      const response = await axios.get(`${API}/public/availability/${business.organization_id}`, {
+      const response = await publicApi.get(`/public/availability/${business.organization_id}`, {
         params: params
       });
       
@@ -234,7 +239,7 @@ const PublicBookingPage = () => {
         staff_member_id: selectedStaff || null
       };
 
-      await axios.post(`${API}/public/appointments`, payload, {
+      await publicApi.post(`/public/appointments`, payload, {
         params: { organization_id: business.organization_id }
       });
       

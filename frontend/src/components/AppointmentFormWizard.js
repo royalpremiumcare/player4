@@ -17,6 +17,11 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL !== undefined ? process.env.REACT_APP_BACKEND_URL : "";
 const API = `${BACKEND_URL}/api`;
 
+// Public endpoint için axios instance (token gerektirmez)
+const publicApi = axios.create({
+  baseURL: `${BACKEND_URL}/api`,
+});
+
 const AppointmentFormWizard = ({ services, appointment, onSave, onCancel }) => {
   const { userRole } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
@@ -171,7 +176,7 @@ const AppointmentFormWizard = ({ services, appointment, onSave, onCancel }) => {
         params.staff_id = formData.staff_member_id;
       }
 
-      const response = await axios.get(`${API}/public/availability/${organization_id}`, {
+      const response = await publicApi.get(`/public/availability/${organization_id}`, {
         params: params
       });
       

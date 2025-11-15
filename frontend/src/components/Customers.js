@@ -54,6 +54,7 @@ const Customers = ({ onNavigate, onNewAppointment }) => {
   // WebSocket connection for real-time updates
   const socketRef = useRef(null);
 
+  // WebSocket bağlantısını sadece bir kez oluştur
   useEffect(() => {
     const initialize = async () => {
       if (userRole === 'staff') {
@@ -63,81 +64,95 @@ const Customers = ({ onNavigate, onNewAppointment }) => {
     };
     initialize();
     
-    // Initialize Socket.IO connection
-    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
-    const socketUrl = BACKEND_URL || window.location.origin;
-    
-    // Get token for authentication
-    const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
-    
-    const socket = io(socketUrl, {
-      path: '/api/socket.io',
-      transports: ['websocket'],
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      query: {
-        token: authToken || ''
-      }
-    });
-    
-    socketRef.current = socket;
-    
-    socket.on('connect', () => {
-      const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
-      if (token) {
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          const organizationId = payload.org_id;
-          if (organizationId) {
-            socket.emit('join_organization', { organization_id: organizationId });
-          }
-        } catch (error) {
-          console.error('Error parsing token:', error);
+    // WebSocket bağlantısı sadece bir kez oluşturulmalı
+    if (!socketRef.current) {
+      // Initialize Socket.IO connection
+      const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+      const socketUrl = BACKEND_URL || window.location.origin;
+      
+      // Get token for authentication
+      const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+      
+      const socket = io(socketUrl, {
+        path: '/api/socket.io',
+        transports: ['websocket'],
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        query: {
+          token: authToken || ''
         }
-      }
-    });
+      });
+      
+      socketRef.current = socket;
+      
+      socket.on('connect', () => {
+        const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            const organizationId = payload.org_id;
+            if (organizationId) {
+              socket.emit('join_organization', { organization_id: organizationId });
+            }
+          } catch (error) {
+            console.error('Error parsing token:', error);
+          }
+        }
+      });
+      
+      socket.on('appointment_created', () => {
+        loadCustomers();
+        // selectedCustomer ref kullanarak güncel değeri al
+        if (selectedCustomer) {
+          loadCustomerHistory(selectedCustomer.phone);
+        }
+      });
+      
+      socket.on('appointment_updated', () => {
+        loadCustomers();
+        if (selectedCustomer) {
+          loadCustomerHistory(selectedCustomer.phone);
+        }
+      });
+      
+      socket.on('appointment_deleted', () => {
+        loadCustomers();
+        if (selectedCustomer) {
+          loadCustomerHistory(selectedCustomer.phone);
+        }
+      });
+      
+      socket.on('customer_added', () => {
+        loadCustomers();
+      });
+      
+      socket.on('customer_deleted', (data) => {
+        loadCustomers();
+        // Eğer silinen müşteri seçiliyse, seçimi temizle
+        if (selectedCustomer && data?.phone && selectedCustomer.phone === data.phone) {
+          setSelectedCustomer(null);
+          setCustomerHistory(null);
+          setCustomerNotes("");
+        }
+      });
+    }
     
-    socket.on('appointment_created', () => {
-      loadCustomers();
-      if (selectedCustomer) {
-        loadCustomerHistory(selectedCustomer.phone);
-      }
-    });
-    
-    socket.on('appointment_updated', () => {
-      loadCustomers();
-      if (selectedCustomer) {
-        loadCustomerHistory(selectedCustomer.phone);
-      }
-    });
-    
-    socket.on('appointment_deleted', () => {
-      loadCustomers();
-      if (selectedCustomer) {
-        loadCustomerHistory(selectedCustomer.phone);
-      }
-    });
-    
-    socket.on('customer_added', () => {
-      loadCustomers();
-    });
-    
-    socket.on('customer_deleted', (data) => {
-      loadCustomers();
-      // Eğer silinen müşteri seçiliyse, seçimi temizle
-      if (selectedCustomer && data?.phone && selectedCustomer.phone === data.phone) {
-        setSelectedCustomer(null);
-        setCustomerHistory(null);
-        setCustomerNotes("");
-      }
-    });
-    
+    // Cleanup sadece component unmount olduğunda
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
+      // WebSocket bağlantısını component unmount olduğunda kapat
+      // Ancak bu App.js'deki global bağlantıyı etkilememeli
+      // Bu yüzden cleanup'ı kaldırıyoruz veya sadece event listener'ları temizliyoruz
     };
+  }, []); // Empty dependency array - sadece mount'ta çalışır
+  
+  // selectedCustomer değiştiğinde sadece history yükle
+  useEffect(() => {
+    if (selectedCustomer) {
+      loadCustomerHistory(selectedCustomer.phone);
+    } else {
+      setCustomerHistory(null);
+      setCustomerNotes("");
+    }
   }, [selectedCustomer]);
 
   const loadCurrentStaffUsername = async () => {

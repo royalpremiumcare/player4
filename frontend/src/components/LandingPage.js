@@ -3,6 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { Calendar, Check, Menu, X, Clock, Users, Smartphone, BarChart3, Bell, Shield, Zap, TrendingUp, Star, MessageSquare, FileText, UserCheck, CircleDollarSign, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import axios from "axios";
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL !== undefined ? process.env.REACT_APP_BACKEND_URL : "";
+
+// Public endpoint için axios instance (token gerektirmez)
+const publicApi = axios.create({
+  baseURL: `${BACKEND_URL}/api`,
+});
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -176,10 +184,9 @@ const LandingPage = () => {
     // Backend'den planları çek
     const fetchPlans = async () => {
       try {
-        const response = await fetch('/api/plans');
-        const data = await response.json();
+        const response = await publicApi.get('/plans');
         // Trial hariç tüm planları al (Trial sadece kayıt sonrası)
-        const paidPlans = data.plans.filter(p => p.id !== 'tier_trial');
+        const paidPlans = (response.data.plans || []).filter(p => p.id !== 'tier_trial');
         setPlans(paidPlans);
       } catch (error) {
         console.error('Planlar yüklenemedi:', error);

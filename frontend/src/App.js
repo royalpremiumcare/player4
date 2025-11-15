@@ -47,13 +47,6 @@ function App() {
   const [pullDistance, setPullDistance] = useState(0);
   const [settings, setSettings] = useState(null);
 
-  // Logo URL helper - logo_url zaten /api/static/... formatında
-  const getLogoUrl = (logoUrl) => {
-    if (!logoUrl) return null;
-    // Logo URL zaten /api/static/... formatında, direkt kullanabiliriz
-    return logoUrl;
-  };
-
   // Define load functions before useEffect hooks
   const loadSettings = useCallback(async () => {
     try {
