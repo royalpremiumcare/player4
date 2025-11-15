@@ -850,7 +850,7 @@ class BusinessHoursDay(BaseModel):
 class Settings(BaseModel):
     model_config = ConfigDict(extra="ignore"); organization_id: str; id: str = Field(default_factory=lambda: str(uuid.uuid4())); work_start_hour: int = 7; work_end_hour: int = 3; appointment_interval: int = 30
     company_name: str = "İşletmeniz"; support_phone: str = "05000000000"; slug: Optional[str] = None; customer_can_choose_staff: bool = False
-    logo_url: Optional[str] = None; sms_reminder_hours: float = 1.0; sector: Optional[str] = None; admin_provides_service: bool = True
+    logo_url: Optional[str] = None; sms_reminder_hours: float = 1.0; sector: Optional[str] = None; admin_provides_service: bool = False
     show_service_duration_on_public: bool = True; show_service_price_on_public: bool = True
     business_hours: Optional[dict] = Field(default_factory=lambda: {
         "monday": {"is_open": True, "open_time": "09:00", "close_time": "18:00"},
