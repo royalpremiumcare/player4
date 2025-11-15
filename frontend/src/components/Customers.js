@@ -75,10 +75,10 @@ const Customers = ({ onNavigate, onNewAppointment }) => {
       
       const socket = io(socketUrl, {
         path: '/api/socket.io',
-        transports: ['websocket'],
+        transports: ['websocket', 'polling'],
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        query: {
+        auth: {
           token: authToken || ''
         }
       });

@@ -41,6 +41,7 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
   const [viewMode, setViewMode] = useState("week"); // "day", "week", "month", "list"
   const [loading, setLoading] = useState(false);
   const [currentStaffUsername, setCurrentStaffUsername] = useState(null);
+  const socketRef = useRef(null);
 
   // Randevu bitiş saatini hesapla
   const calculateEndTime = (startTime, duration) => {
@@ -154,83 +155,73 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
     loadAppointments();
   }, [loadAppointments]);
 
-  // WebSocket bağlantısı ve event listener'ları
+  // WebSocket bağlantısı - sadece bir kez oluştur
   useEffect(() => {
-    if (!token) return; // Token yoksa WebSocket bağlantısı kurma
-    
-    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
-    const socketUrl = BACKEND_URL || window.location.origin;
-    
-    // Get token for authentication
-    const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
-    
-    const socket = io(socketUrl, {
-      path: '/api/socket.io',
-      transports: ['websocket', 'polling'],
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
-      autoConnect: true,
-      query: {
-        token: authToken || ''
-      }
-    });
-
-    const handleConnect = () => {
+    if (!socketRef.current && token) {
+      const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+      const socketUrl = BACKEND_URL || window.location.origin;
       const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
-      if (authToken) {
-        try {
-          const payload = JSON.parse(atob(authToken.split('.')[1]));
-          const organizationId = payload.org_id;
-          if (organizationId) {
-            socket.emit('join_organization', { organization_id: organizationId });
-          }
-        } catch (error) {
-          // Token parse error - silent
+      
+      const socket = io(socketUrl, {
+        path: '/api/socket.io',
+        transports: ['websocket', 'polling'],
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: 5,
+        autoConnect: true,
+        auth: {
+          token: authToken || ''
         }
-      }
-    };
+      });
 
-    const handleAppointmentCreated = () => {
-      if (loadAppointmentsRef.current) {
-        loadAppointmentsRef.current();
-      }
-    };
+      socketRef.current = socket;
 
-    const handleAppointmentUpdated = () => {
-      if (loadAppointmentsRef.current) {
-        loadAppointmentsRef.current();
-      }
-    };
+      socket.on('connect', () => {
+        const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+        if (authToken) {
+          try {
+            const payload = JSON.parse(atob(authToken.split('.')[1]));
+            const organizationId = payload.org_id;
+            if (organizationId) {
+              socket.emit('join_organization', { organization_id: organizationId });
+            }
+          } catch (error) {
+            console.error('Token parse error:', error);
+          }
+        }
+      });
 
-    const handleAppointmentDeleted = () => {
-      if (loadAppointmentsRef.current) {
-        loadAppointmentsRef.current();
-      }
-    };
+      socket.on('appointment_created', () => {
+        if (loadAppointmentsRef.current) {
+          loadAppointmentsRef.current();
+        }
+      });
 
-    socket.on('connect', handleConnect);
-    socket.on('appointment_created', handleAppointmentCreated);
-    socket.on('appointment_updated', handleAppointmentUpdated);
-    socket.on('appointment_deleted', handleAppointmentDeleted);
-    socket.on('joined_organization', () => {});
-    socket.on('disconnect', () => {});
-    socket.on('connect_error', () => {});
+      socket.on('appointment_updated', () => {
+        if (loadAppointmentsRef.current) {
+          loadAppointmentsRef.current();
+        }
+      });
 
-    // Eğer socket zaten bağlıysa, hemen join et
-    if (socket.connected) {
-      handleConnect();
+      socket.on('appointment_deleted', () => {
+        if (loadAppointmentsRef.current) {
+          loadAppointmentsRef.current();
+        }
+      });
+
+      socket.on('joined_organization', () => {});
+      socket.on('disconnect', () => {});
+      socket.on('connect_error', (err) => console.error('Socket connection error:', err));
     }
 
+    // Cleanup - sadece component unmount olduğunda
     return () => {
-      socket.off('connect', handleConnect);
-      socket.off('appointment_created', handleAppointmentCreated);
-      socket.off('appointment_updated', handleAppointmentUpdated);
-      socket.off('appointment_deleted', handleAppointmentDeleted);
-      socket.off('joined_organization');
-      socket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
-  }, [token]);
+  }, []);
 
   const getStaffName = (staffId) => {
     if (!staffId) return "Atanmadı";

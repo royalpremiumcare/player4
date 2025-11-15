@@ -346,7 +346,7 @@ sio = socketio.AsyncServer(
     async_mode='asgi',
     cors_allowed_origins=socketio_cors_origins,
     logger=True,
-    engineio_logger=False
+    engineio_logger=True  # Enable Engine.IO logs for debugging
 )
 socket_app = socketio.ASGIApp(sio, socketio_path='/api/socket.io', other_asgi_app=app)
 
@@ -357,37 +357,46 @@ api_router = APIRouter()
 @sio.event
 async def connect(sid, environ, *args):
     """Client connected - with authentication"""
-    logger.info(f"🔵 [CONNECT] WebSocket client connected: {sid}")
+    logger.info(f"🔵 [CONNECT] WebSocket client attempting connection: {sid}")
+    logger.info(f"🔍 [CONNECT] Args received: {args}")
     
     # Token'ı bul (auth parametresi, query string veya header'dan)
     token = None
     
     # 1. Socket.IO auth parametresinden token al (args'da gelebilir)
     if args and len(args) > 0:
+        logger.info(f"📦 [CONNECT] Args[0] type: {type(args[0])}, content: {args[0]}")
         auth_data = args[0]
         if isinstance(auth_data, dict):
             token = auth_data.get('token')
+            logger.info(f"🔑 [CONNECT] Token from auth dict: {token[:20] if token else 'None'}...")
         elif isinstance(auth_data, str):
             token = auth_data
+            logger.info(f"🔑 [CONNECT] Token from auth string: {token[:20] if token else 'None'}...")
     
     # 2. Query string'den token al (client query: {token: ...} kullanırsa)
     if not token:
         query_string = environ.get('QUERY_STRING', '')
+        logger.info(f"❓ [CONNECT] Query string: {query_string}")
         if query_string:
             from urllib.parse import parse_qs
             params = parse_qs(query_string)
             token_list = params.get('token', [])
             if token_list:
                 token = token_list[0]
+                logger.info(f"🔑 [CONNECT] Token from query: {token[:20]}...")
     
     # 3. Header'dan token al (HTTP_AUTHORIZATION)
     if not token:
         auth_header = environ.get('HTTP_AUTHORIZATION', '')
+        logger.info(f"📋 [CONNECT] Auth header: {auth_header[:30] if auth_header else 'None'}...")
         if auth_header.startswith('Bearer '):
             token = auth_header[7:]
+            logger.info(f"🔑 [CONNECT] Token from header: {token[:20]}...")
     
     if not token:
         logger.warning(f"✗ [CONNECT] No token provided by {sid}")
+        logger.warning(f"✗ [CONNECT] Available environ keys: {list(environ.keys())[:10]}")
         return False  # Bağlantıyı reddet
     
     # Token'ı doğrula
