@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Building2, DollarSign, Calendar, Users, Search, ArrowUpDown, ArrowUp, ArrowDown, Phone, Mail, MessageSquare, Clock, CheckCircle2, MessageCircle } from "lucide-react";
+import { Building2, DollarSign, Calendar, Users, Search, ArrowUpDown, ArrowUp, ArrowDown, Phone, Mail, MessageSquare, Clock, CheckCircle2, MessageCircle, Trash2, Trash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import api from "../api/api";
@@ -24,6 +24,7 @@ const SuperAdmin = () => {
   const [contactSearchTerm, setContactSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [contactSortConfig, setContactSortConfig] = useState({ key: null, direction: 'asc' });
+  const [selectedContacts, setSelectedContacts] = useState([]);
 
   useEffect(() => {
     loadData();
@@ -66,12 +67,54 @@ const SuperAdmin = () => {
         )
       );
       
-      const statusText = newStatus === 'contacted' ? 'İletişime Geçildi' : 
-                        newStatus === 'resolved' ? 'Çözüldü' : 'Beklemede';
+      const statusText = newStatus === 'contacted' ? 'İletişime Geçildi' : 'Beklemede';
       toast.success(`Durum "${statusText}" olarak güncellendi`);
     } catch (error) {
       toast.error("Durum güncellenirken hata oluştu");
       console.error("Status update error:", error);
+    }
+  };
+
+  const handleDeleteContact = async (contactId) => {
+    if (!window.confirm("Bu iletişim talebini silmek istediğinize emin misiniz?")) {
+      return;
+    }
+
+    try {
+      await api.delete(`/superadmin/contact-requests/${contactId}`);
+      
+      // Local state'den kaldır
+      setContactRequests(prev => prev.filter(contact => contact.id !== contactId));
+      
+      toast.success("İletişim talebi silindi");
+    } catch (error) {
+      toast.error("İletişim talebi silinirken hata oluştu");
+      console.error("Delete error:", error);
+    }
+  };
+
+  const handleBulkDeleteResolved = async () => {
+    const resolvedCount = contactRequests.filter(c => c.status === 'resolved').length;
+    
+    if (resolvedCount === 0) {
+      toast.info("Silinecek çözülen iletişim talebi bulunamadı");
+      return;
+    }
+
+    if (!window.confirm(`${resolvedCount} adet çözülen iletişim talebini silmek istediğinize emin misiniz?`)) {
+      return;
+    }
+
+    try {
+      const response = await api.delete(`/superadmin/contact-requests/bulk/delete-resolved`);
+      
+      // Local state'den çözülenleri kaldır
+      setContactRequests(prev => prev.filter(contact => contact.status !== 'resolved'));
+      
+      toast.success(`${response.data.deleted_count} adet çözülen iletişim talebi silindi`);
+    } catch (error) {
+      toast.error("Çözülen iletişim talepleri silinirken hata oluştu");
+      console.error("Bulk delete error:", error);
     }
   };
 
@@ -444,7 +487,19 @@ const SuperAdmin = () => {
         {activeTab === "contacts" && (
         <Card className="p-6">
           <div className="mb-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">İletişim Talepleri</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+              <h2 className="text-xl font-bold text-gray-900">İletişim Talepleri</h2>
+              {contactRequests.filter(c => c.status === 'resolved').length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={handleBulkDeleteResolved}
+                  className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Çözülenleri Toplu Sil ({contactRequests.filter(c => c.status === 'resolved').length})
+                </Button>
+              )}
+            </div>
             
             {/* Arama Çubuğu */}
             <div className="relative max-w-md">
@@ -510,12 +565,13 @@ const SuperAdmin = () => {
                       <ContactSortIcon columnKey="created_at" />
                     </div>
                   </TableHead>
+                  <TableHead className="text-right">İşlemler</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredAndSortedContacts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                       {contactSearchTerm ? "Arama sonucu bulunamadı" : "Henüz iletişim talebi yok"}
                     </TableCell>
                   </TableRow>
@@ -558,7 +614,7 @@ const SuperAdmin = () => {
                         <div className="flex flex-col gap-2">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                             contact.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            contact.status === 'contacted' ? 'bg-blue-100 text-blue-800' :
+                            contact.status === 'contacted' ? 'bg-green-100 text-green-800' :
                             contact.status === 'resolved' ? 'bg-green-100 text-green-800' :
                             'bg-gray-100 text-gray-800'
                           }`}>
@@ -571,23 +627,11 @@ const SuperAdmin = () => {
                             {contact.status !== 'contacted' && (
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="h-7 text-xs px-2"
+                                className="h-7 text-xs px-2 bg-green-600 hover:bg-green-700 text-white border-0"
                                 onClick={() => handleStatusUpdate(contact.id, 'contacted')}
                               >
                                 <MessageCircle className="w-3 h-3 mr-1" />
                                 İletişime Geçildi
-                              </Button>
-                            )}
-                            {contact.status !== 'resolved' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs px-2"
-                                onClick={() => handleStatusUpdate(contact.id, 'resolved')}
-                              >
-                                <CheckCircle2 className="w-3 h-3 mr-1" />
-                                Çözüldü
                               </Button>
                             )}
                             {contact.status !== 'pending' && (
@@ -614,6 +658,17 @@ const SuperAdmin = () => {
                             minute: '2-digit'
                           }) : '-'}
                         </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs px-2 text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                          onClick={() => handleDeleteContact(contact.id)}
+                        >
+                          <Trash className="w-3 h-3 mr-1" />
+                          Sil
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))

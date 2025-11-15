@@ -4780,6 +4780,51 @@ async def update_contact_status(
         logging.error(f"❌ [SUPERADMIN] Contact request durumu güncellenirken hata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Durum güncellenirken hata oluştu")
 
+@api_router.delete("/superadmin/contact-requests/{contact_id}")
+async def delete_contact_request(
+    request: Request,
+    contact_id: str,
+    current_user: UserInDB = Depends(get_superadmin_user),
+    db = Depends(get_db)
+):
+    """Contact request'i sil - Sadece superadmin"""
+    try:
+        # Contact request'i bul
+        contact = await db.contact_requests.find_one({"id": contact_id}, {"_id": 0})
+        if not contact:
+            raise HTTPException(status_code=404, detail="İletişim talebi bulunamadı")
+        
+        # Contact request'i sil
+        await db.contact_requests.delete_one({"id": contact_id})
+        
+        logging.info(f"✅ [SUPERADMIN] Contact request silindi: {contact_id}")
+        
+        return {"success": True, "message": "İletişim talebi silindi"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"❌ [SUPERADMIN] Contact request silinirken hata: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="İletişim talebi silinirken hata oluştu")
+
+@api_router.delete("/superadmin/contact-requests/bulk/delete-resolved")
+async def delete_resolved_contacts(
+    request: Request,
+    current_user: UserInDB = Depends(get_superadmin_user),
+    db = Depends(get_db)
+):
+    """Çözülen (resolved) contact request'leri toplu sil - Sadece superadmin"""
+    try:
+        # Resolved status'lu contact request'leri bul ve sil
+        result = await db.contact_requests.delete_many({"status": "resolved"})
+        
+        deleted_count = result.deleted_count
+        logging.info(f"✅ [SUPERADMIN] {deleted_count} adet çözülen iletişim talebi silindi")
+        
+        return {"success": True, "deleted_count": deleted_count, "message": f"{deleted_count} adet çözülen iletişim talebi silindi"}
+    except Exception as e:
+        logging.error(f"❌ [SUPERADMIN] Çözülen iletişim talepleri silinirken hata: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Çözülen iletişim talepleri silinirken hata oluştu")
+
 @api_router.get("/superadmin/organizations")
 async def get_superadmin_organizations(request: Request, current_user: UserInDB = Depends(get_superadmin_user), db = Depends(get_db)):
     """Detaylı işletme listesi - Sadece superadmin"""
