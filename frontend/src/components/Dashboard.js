@@ -46,6 +46,7 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
   const [staffMembers, setStaffMembers] = useState([]);
   const [currentStaffUsername, setCurrentStaffUsername] = useState(null);
   const [personnelStats, setPersonnelStats] = useState(null);
+  const socketRef = useRef(null);
 
   const today = format(new Date(), "yyyy-MM-dd");
   const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
@@ -94,6 +95,64 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
       loadPersonnelStats();
     }
   }, [appointments.length, userRole, loadPersonnelStats]);
+
+  // WebSocket bağlantısı - real-time güncellemeler için
+  useEffect(() => {
+    if (!socketRef.current && token) {
+      const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+      const socketUrl = BACKEND_URL || window.location.origin;
+      const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+      
+      const socket = io(socketUrl, {
+        path: '/api/socket.io',
+        transports: ['websocket', 'polling'],
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        auth: {
+          token: authToken || ''
+        }
+      });
+
+      socketRef.current = socket;
+
+      socket.on('connect', () => {
+        const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+        if (authToken) {
+          try {
+            const payload = JSON.parse(atob(authToken.split('.')[1]));
+            const organizationId = payload.org_id;
+            if (organizationId) {
+              socket.emit('join_organization', { organization_id: organizationId });
+            }
+          } catch (error) {
+            console.error('Dashboard - Token parse error:', error);
+          }
+        }
+      });
+
+      socket.on('appointment_created', () => {
+        if (onRefresh) onRefresh();
+        if (userRole === 'staff') loadPersonnelStats();
+      });
+
+      socket.on('appointment_updated', () => {
+        if (onRefresh) onRefresh();
+        if (userRole === 'staff') loadPersonnelStats();
+      });
+
+      socket.on('appointment_deleted', () => {
+        if (onRefresh) onRefresh();
+        if (userRole === 'staff') loadPersonnelStats();
+      });
+    }
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, []);
 
   const loadCurrentStaffUsername = async () => {
     try {
