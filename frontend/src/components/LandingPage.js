@@ -1,8 +1,19 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, Check, Menu, X, Clock, Users, Smartphone, BarChart3, Bell, Shield, Zap, TrendingUp, Star, MessageSquare, FileText, UserCheck, CircleDollarSign, ChevronDown } from "lucide-react";
+import { Calendar, Check, Menu, X, Clock, Users, Smartphone, BarChart3, Bell, Shield, Zap, TrendingUp, Star, MessageSquare, FileText, UserCheck, CircleDollarSign, ChevronDown, Phone, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 import axios from "axios";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL !== undefined ? process.env.REACT_APP_BACKEND_URL : "";
@@ -16,6 +27,15 @@ const LandingPage = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
+  const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [contactForm, setContactForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    message: ""
+  });
+  const [contactFormLoading, setContactFormLoading] = useState(false);
+  const [contactFormSuccess, setContactFormSuccess] = useState(false);
   // Animasyonlu kelimeler
   const words = ["Hızlı", "Pratik", "Kolay", "Hesaplı"];
   const [wordIndex, setWordIndex] = useState(0);
@@ -28,6 +48,19 @@ const LandingPage = () => {
     
     return () => clearInterval(interval);
   }, []);
+
+  // Modal açıldığında sayfayı en üste scroll et (mobil Chrome için)
+  useEffect(() => {
+    if (contactModalOpen) {
+      // Kısa bir gecikme ile scroll et (modal render olana kadar bekle)
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Mobil Chrome için ekstra güvence
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      }, 100);
+    }
+  }, [contactModalOpen]);
   
   // Sayfa yüklendiğinde scroll'u en üste al (mobil ve masaüstü için)
   useEffect(() => {
@@ -357,6 +390,13 @@ const LandingPage = () => {
               </div>
               <Button 
                 variant="outline"
+                onClick={() => {
+                  // Mobil Chrome için sayfayı en üste scroll et
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                  setTimeout(() => {
+                    setContactModalOpen(true);
+                  }, 150);
+                }}
                 className="bg-transparent border-2 border-gray-900 text-gray-900 hover:bg-gray-100 px-10 py-6 text-lg font-semibold rounded-full"
               >
                 Sizi Arayalım
@@ -375,6 +415,80 @@ const LandingPage = () => {
                   alt="PLANN Dashboard Önizleme" 
                   className="w-full h-auto rounded-xl"
                 />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Social Proof Section */}
+      <section className="py-16 bg-[#f5f1e8] border-t border-gray-200">
+        <div className="container mx-auto px-4">
+          <div className="max-w-6xl mx-auto">
+            {/* İstatistikler */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8 mb-12">
+              <div className="text-center">
+                <div className="text-4xl md:text-5xl font-bold text-gray-900 mb-2">500+</div>
+                <div className="text-gray-600 font-medium">Aktif İşletme</div>
+              </div>
+              <div className="text-center">
+                <div className="text-4xl md:text-5xl font-bold text-gray-900 mb-2">420K+</div>
+                <div className="text-gray-600 font-medium">Randevu</div>
+              </div>
+              <div className="text-center">
+                <div className="text-4xl md:text-5xl font-bold text-gray-900 mb-2">4.8</div>
+                <div className="flex items-center justify-center gap-1 mb-2">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                  ))}
+                </div>
+                <div className="text-gray-600 font-medium">Kullanıcı Puanı</div>
+              </div>
+              <div className="text-center">
+                <div className="text-4xl md:text-5xl font-bold text-gray-900 mb-2">%98</div>
+                <div className="text-gray-600 font-medium">Memnuniyet</div>
+              </div>
+            </div>
+
+            {/* Güven Göstergeleri */}
+            <div className="flex flex-wrap items-center justify-center gap-6 md:gap-8 pt-8 border-t border-gray-200">
+              <div className="flex items-center gap-2">
+                <Shield className="w-6 h-6 text-green-500" />
+                <span className="text-gray-700 font-medium">SSL Güvenli</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="w-6 h-6 text-green-500" />
+                <span className="text-gray-700 font-medium">KVKK Uyumlu</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-6 h-6 text-blue-500" />
+                <span className="text-gray-700 font-medium">7/24 Destek</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Zap className="w-6 h-6 text-yellow-500" />
+                <span className="text-gray-700 font-medium">99.9% Uptime</span>
+              </div>
+            </div>
+
+            {/* Müşteri Kategorileri */}
+            <div className="mt-12 pt-8 border-t border-gray-200">
+              <p className="text-center text-gray-600 mb-6 font-medium">Bize Güvenen İşletmeler</p>
+              <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6">
+                <Card className="px-6 py-3 bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  <span className="text-gray-700 font-semibold text-sm md:text-base">Kuaför Salonları</span>
+                </Card>
+                <Card className="px-6 py-3 bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  <span className="text-gray-700 font-semibold text-sm md:text-base">Sağlık Merkezleri</span>
+                </Card>
+                <Card className="px-6 py-3 bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  <span className="text-gray-700 font-semibold text-sm md:text-base">Eğitim Kurumları</span>
+                </Card>
+                <Card className="px-6 py-3 bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  <span className="text-gray-700 font-semibold text-sm md:text-base">Veteriner Klinikleri</span>
+                </Card>
+                <Card className="px-6 py-3 bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                  <span className="text-gray-700 font-semibold text-sm md:text-base">Spa & Wellness</span>
+                </Card>
               </div>
             </div>
           </div>
@@ -593,6 +707,151 @@ const LandingPage = () => {
           </Button>
         </div>
       </section>
+
+      {/* Contact Modal */}
+      <Dialog open={contactModalOpen} onOpenChange={setContactModalOpen}>
+        <DialogContent className="w-[95vw] max-w-[520px] h-[90vh] max-h-[650px] md:h-auto bg-white border-0 p-0 rounded-2xl shadow-2xl overflow-hidden">
+          <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 px-6 pt-8 pb-6">
+            <button
+              onClick={() => setContactModalOpen(false)}
+              className="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-200 transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
+            <DialogHeader>
+              <DialogTitle className="text-2xl md:text-3xl font-bold text-gray-900 text-center pr-8" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+                Sizi Arayalım
+              </DialogTitle>
+              <DialogDescription className="text-center text-gray-600 text-sm mt-2">
+                İletişim bilgilerinizi bırakın, size en kısa sürede ulaşalım.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+          
+          {contactFormSuccess ? (
+            <div className="px-6 py-10 md:py-12 text-center bg-white flex flex-col items-center justify-center min-h-[400px]">
+              <div className="w-24 h-24 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+                <Check className="w-12 h-12 text-white" />
+              </div>
+              <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+                Talebiniz Alındı!
+              </h3>
+              <p className="text-gray-600 mb-8 text-base max-w-sm">
+                En kısa sürede sizinle iletişime geçeceğiz.
+              </p>
+              <Button 
+                onClick={() => {
+                  setContactModalOpen(false);
+                  setContactFormSuccess(false);
+                  setContactForm({ name: "", phone: "", email: "", message: "" });
+                }}
+                className="bg-gray-900 text-white hover:bg-gray-800 px-10 py-6 rounded-full font-semibold text-base shadow-lg transition-all hover:scale-105"
+              >
+                Tamam
+              </Button>
+            </div>
+          ) : (
+            <form 
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setContactFormLoading(true);
+                
+                try {
+                  const response = await publicApi.post('/contact', {
+                    name: contactForm.name,
+                    phone: contactForm.phone,
+                    email: contactForm.email || null,
+                    message: contactForm.message || null
+                  });
+                  
+                  if (response.data.success) {
+                    setContactFormSuccess(true);
+                    toast.success("Talebiniz alındı!");
+                  } else {
+                    toast.error("Bir hata oluştu, lütfen tekrar deneyin");
+                  }
+                } catch (error) {
+                  console.error("Contact form error:", error);
+                  toast.error(error.response?.data?.detail || "Bir hata oluştu, lütfen tekrar deneyin");
+                } finally {
+                  setContactFormLoading(false);
+                }
+              }}
+              className="px-6 py-6 space-y-5 bg-white overflow-y-auto max-h-[calc(90vh-200px)] md:max-h-none"
+            >
+              <div className="space-y-2">
+                <Input
+                  id="contact-name"
+                  value={contactForm.name}
+                  onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                  placeholder="Ad Soyad"
+                  required
+                  className="h-14 border-2 border-gray-200 rounded-xl focus:border-gray-900 focus:ring-0 bg-gray-50 focus:bg-white transition-all text-base placeholder:text-gray-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Input
+                  id="contact-phone"
+                  type="tel"
+                  value={contactForm.phone}
+                  onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                  placeholder="Telefon Numarası"
+                  required
+                  className="h-14 border-2 border-gray-200 rounded-xl focus:border-gray-900 focus:ring-0 bg-gray-50 focus:bg-white transition-all text-base placeholder:text-gray-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Input
+                  id="contact-email"
+                  type="email"
+                  value={contactForm.email}
+                  onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                  placeholder="E-posta (Opsiyonel)"
+                  className="h-14 border-2 border-gray-200 rounded-xl focus:border-gray-900 focus:ring-0 bg-gray-50 focus:bg-white transition-all text-base placeholder:text-gray-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Textarea
+                  id="contact-message"
+                  value={contactForm.message}
+                  onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                  placeholder="Mesajınız (Opsiyonel)"
+                  rows={4}
+                  className="border-2 border-gray-200 rounded-xl focus:border-gray-900 focus:ring-0 bg-gray-50 focus:bg-white transition-all resize-none text-base placeholder:text-gray-400 min-h-[120px]"
+                />
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  disabled={contactFormLoading}
+                  className="w-full bg-gray-900 text-white hover:bg-gray-800 px-8 py-6 rounded-full font-semibold text-base shadow-lg transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                >
+                  {contactFormLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      Gönderiliyor...
+                    </>
+                  ) : (
+                    <>
+                      <Phone className="w-5 h-5 mr-2" />
+                      Gönder
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div className="flex items-start gap-2 text-xs text-gray-500 pt-2 pb-2">
+                <Shield className="w-4 h-4 mt-0.5 flex-shrink-0 text-gray-400" />
+                <span className="leading-relaxed">Bilgileriniz güvende, sadece sizinle iletişim için kullanılacak.</span>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Footer */}
       <footer className="bg-[#f5f1e8] text-gray-700 py-12 pb-0 md:pb-12 landing-footer">

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { Building2, DollarSign, Calendar, Users, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Building2, DollarSign, Calendar, Users, Search, ArrowUpDown, ArrowUp, ArrowDown, Phone, Mail, MessageSquare, Clock, CheckCircle2, MessageCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import api from "../api/api";
 import { Card } from "@/components/ui/card";
@@ -16,9 +17,13 @@ import {
 const SuperAdmin = () => {
   const [stats, setStats] = useState(null);
   const [organizations, setOrganizations] = useState([]);
+  const [contactRequests, setContactRequests] = useState([]);
+  const [activeTab, setActiveTab] = useState("organizations"); // "organizations" veya "contacts"
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [contactSearchTerm, setContactSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [contactSortConfig, setContactSortConfig] = useState({ key: null, direction: 'asc' });
 
   useEffect(() => {
     loadData();
@@ -27,12 +32,14 @@ const SuperAdmin = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [statsResponse, orgsResponse] = await Promise.all([
+      const [statsResponse, orgsResponse, contactsResponse] = await Promise.all([
         api.get("/superadmin/stats"),
-        api.get("/superadmin/organizations")
+        api.get("/superadmin/organizations"),
+        api.get("/superadmin/contact-requests")
       ]);
       setStats(statsResponse.data);
       setOrganizations(orgsResponse.data.organizations || []);
+      setContactRequests(contactsResponse.data.contacts || []);
     } catch (error) {
       if (error.response?.status === 403) {
         toast.error("Bu sayfaya erişim yetkiniz yok");
@@ -42,6 +49,91 @@ const SuperAdmin = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStatusUpdate = async (contactId, newStatus) => {
+    try {
+      await api.put(`/superadmin/contact-requests/${contactId}/status`, {
+        status: newStatus
+      });
+      
+      // Local state'i güncelle
+      setContactRequests(prev => 
+        prev.map(contact => 
+          contact.id === contactId 
+            ? { ...contact, status: newStatus }
+            : contact
+        )
+      );
+      
+      const statusText = newStatus === 'contacted' ? 'İletişime Geçildi' : 
+                        newStatus === 'resolved' ? 'Çözüldü' : 'Beklemede';
+      toast.success(`Durum "${statusText}" olarak güncellendi`);
+    } catch (error) {
+      toast.error("Durum güncellenirken hata oluştu");
+      console.error("Status update error:", error);
+    }
+  };
+
+  // Contact requests için arama ve sıralama
+  const filteredAndSortedContacts = useMemo(() => {
+    let filtered = contactRequests.filter(contact => {
+      const searchLower = contactSearchTerm.toLowerCase();
+      return (
+        contact.name?.toLowerCase().includes(searchLower) ||
+        contact.phone?.includes(contactSearchTerm) ||
+        contact.email?.toLowerCase().includes(searchLower) ||
+        contact.message?.toLowerCase().includes(searchLower)
+      );
+    });
+
+    if (contactSortConfig.key) {
+      filtered.sort((a, b) => {
+        let aVal = a[contactSortConfig.key];
+        let bVal = b[contactSortConfig.key];
+
+        // Tarih için özel işlem
+        if (contactSortConfig.key === 'created_at') {
+          aVal = new Date(aVal || 0).getTime();
+          bVal = new Date(bVal || 0).getTime();
+        }
+
+        // String değerler için
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
+        
+        if (contactSortConfig.direction === 'asc') {
+          return aVal > bVal ? 1 : -1;
+        } else {
+          return aVal < bVal ? 1 : -1;
+        }
+      });
+    }
+
+    return filtered;
+  }, [contactRequests, contactSearchTerm, contactSortConfig]);
+
+  const handleContactSort = (key) => {
+    setContactSortConfig(prevConfig => {
+      if (prevConfig.key === key) {
+        return {
+          key,
+          direction: prevConfig.direction === 'asc' ? 'desc' : 'asc'
+        };
+      }
+      return { key, direction: 'asc' };
+    });
+  };
+
+  const ContactSortIcon = ({ columnKey }) => {
+    if (contactSortConfig.key !== columnKey) {
+      return <ArrowUpDown className="ml-2 h-4 w-4 text-gray-400" />;
+    }
+    return contactSortConfig.direction === 'asc' 
+      ? <ArrowUp className="ml-2 h-4 w-4 text-blue-600" />
+      : <ArrowDown className="ml-2 h-4 w-4 text-blue-600" />;
   };
 
   // Arama ve sıralama
@@ -179,7 +271,37 @@ const SuperAdmin = () => {
           </Card>
         </div>
 
-        {/* Detaylı İşletme Listesi */}
+        {/* Tab Navigation */}
+        <div className="mb-6 flex gap-4 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab("organizations")}
+            className={`px-4 py-2 font-medium transition-colors ${
+              activeTab === "organizations"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            İşletmeler
+          </button>
+          <button
+            onClick={() => setActiveTab("contacts")}
+            className={`px-4 py-2 font-medium transition-colors relative ${
+              activeTab === "contacts"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            İletişim Talepleri
+            {contactRequests.filter(c => c.status === "pending").length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {contactRequests.filter(c => c.status === "pending").length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* İşletme Listesi Tab */}
+        {activeTab === "organizations" && (
         <Card className="p-6">
           <div className="mb-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">İşletme Listesi</h2>
@@ -316,6 +438,203 @@ const SuperAdmin = () => {
             </div>
           )}
         </Card>
+        )}
+
+        {/* İletişim Talepleri Tab */}
+        {activeTab === "contacts" && (
+        <Card className="p-6">
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">İletişim Talepleri</h2>
+            
+            {/* Arama Çubuğu */}
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Ad, telefon, e-posta veya mesaj ile ara..."
+                value={contactSearchTerm}
+                onChange={(e) => setContactSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+
+          {/* Tablo */}
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleContactSort('name')}
+                  >
+                    <div className="flex items-center">
+                      Ad Soyad
+                      <ContactSortIcon columnKey="name" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleContactSort('phone')}
+                  >
+                    <div className="flex items-center">
+                      Telefon
+                      <ContactSortIcon columnKey="phone" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleContactSort('email')}
+                  >
+                    <div className="flex items-center">
+                      E-posta
+                      <ContactSortIcon columnKey="email" />
+                    </div>
+                  </TableHead>
+                  <TableHead>Mesaj</TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleContactSort('status')}
+                  >
+                    <div className="flex items-center">
+                      Durum
+                      <ContactSortIcon columnKey="status" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleContactSort('created_at')}
+                  >
+                    <div className="flex items-center">
+                      Tarih
+                      <ContactSortIcon columnKey="created_at" />
+                    </div>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAndSortedContacts.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                      {contactSearchTerm ? "Arama sonucu bulunamadı" : "Henüz iletişim talebi yok"}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredAndSortedContacts.map((contact) => (
+                    <TableRow key={contact.id}>
+                      <TableCell className="font-medium">{contact.name}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-4 h-4 text-gray-400" />
+                          <a href={`tel:${contact.phone}`} className="text-blue-600 hover:underline">
+                            {contact.phone}
+                          </a>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {contact.email ? (
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline">
+                              {contact.email}
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {contact.message ? (
+                          <div className="max-w-xs">
+                            <p className="truncate" title={contact.message}>
+                              {contact.message}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            contact.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            contact.status === 'contacted' ? 'bg-blue-100 text-blue-800' :
+                            contact.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {contact.status === 'pending' ? 'Beklemede' :
+                             contact.status === 'contacted' ? 'İletişime Geçildi' :
+                             contact.status === 'resolved' ? 'Çözüldü' :
+                             contact.status}
+                          </span>
+                          <div className="flex gap-1 flex-wrap">
+                            {contact.status !== 'contacted' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs px-2"
+                                onClick={() => handleStatusUpdate(contact.id, 'contacted')}
+                              >
+                                <MessageCircle className="w-3 h-3 mr-1" />
+                                İletişime Geçildi
+                              </Button>
+                            )}
+                            {contact.status !== 'resolved' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs px-2"
+                                onClick={() => handleStatusUpdate(contact.id, 'resolved')}
+                              >
+                                <CheckCircle2 className="w-3 h-3 mr-1" />
+                                Çözüldü
+                              </Button>
+                            )}
+                            {contact.status !== 'pending' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs px-2"
+                                onClick={() => handleStatusUpdate(contact.id, 'pending')}
+                              >
+                                Beklemede
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Clock className="w-4 h-4" />
+                          {contact.created_at ? new Date(contact.created_at).toLocaleString('tr-TR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : '-'}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Sonuç Sayısı */}
+          {filteredAndSortedContacts.length > 0 && (
+            <div className="mt-4 text-sm text-gray-600">
+              Toplam {filteredAndSortedContacts.length} talep gösteriliyor
+              {contactRequests.filter(c => c.status === "pending").length > 0 && (
+                <span className="ml-2 text-red-600 font-medium">
+                  ({contactRequests.filter(c => c.status === "pending").length} beklemede)
+                </span>
+              )}
+            </div>
+          )}
+        </Card>
+        )}
       </div>
     </div>
   );

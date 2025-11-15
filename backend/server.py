@@ -8,7 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Literal
 import uuid
 from datetime import datetime, timezone, timedelta
 import requests
@@ -207,11 +207,11 @@ async def check_and_send_reminders():
                         sms_result = await asyncio.to_thread(send_sms, apt['phone'], sms_message)
                         
                         if sms_result:
-                            # Hatırlatma gönderildi olarak işaretle
+                        # Hatırlatma gönderildi olarak işaretle
                             await db.appointments.update_one(
-                                {"id": apt['id']},
-                                {"$set": {"reminder_sent": True}}
-                            )
+                            {"id": apt['id']},
+                            {"$set": {"reminder_sent": True}}
+                        )
                             logging.info(f"  ✓ SMS reminder sent successfully to {apt['customer_name']} ({apt['phone']}) for appointment {apt['id']}")
                         else:
                             logging.error(f"  ✗ Failed to send SMS to {apt['customer_name']} ({apt['phone']}) for appointment {apt['id']}")
@@ -301,6 +301,10 @@ async def lifespan(app: FastAPI):
             except Exception as idx_err:
                 # Index might already exist or have duplicate null values, skip
                 logging.debug(f"Settings slug index creation skipped: {idx_err}")
+            
+            # Contact requests indexes
+            await app.db.contact_requests.create_index([("created_at", -1)])
+            await app.db.contact_requests.create_index([("status", 1)])
             
             logging.info("Step 5 SUCCESS: Database indexes created")
         else:
@@ -851,6 +855,8 @@ class Token(BaseModel): access_token: str; token_type: str
 class ForgotPasswordRequest(BaseModel): username: str
 class ResetPasswordRequest(BaseModel): token: str; new_password: str
 class SetupPasswordRequest(BaseModel): token: str; new_password: str
+class ContactRequest(BaseModel): name: str = Field(..., min_length=1); phone: str = Field(..., min_length=10); email: Optional[str] = None; message: Optional[str] = None
+class ContactStatusUpdate(BaseModel): status: Literal["pending", "contacted", "resolved"]
 class Service(BaseModel):
     model_config = ConfigDict(extra="ignore"); organization_id: str; id: str = Field(default_factory=lambda: str(uuid.uuid4())); name: str; price: float; duration: int = 30; created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 class ServiceCreate(BaseModel): name: str; price: float; duration: int = 30
@@ -1367,6 +1373,189 @@ async def send_password_reset_email(user_email: str, user_name: str, reset_link:
         logging.error(f"❌ [SEND_PASSWORD_RESET_EMAIL] E-posta gönderme sırasında beklenmedik hata: {e}", exc_info=True)
         return False
 
+async def send_contact_notification_email(contact_name: str, contact_phone: str, contact_email: Optional[str], contact_message: Optional[str]):
+    """Yeni iletişim talebi için bildirim e-postası gönderir (admin'e)"""
+    try:
+        # Admin e-posta adresi - environment variable'dan al veya default kullan
+        admin_email = os.environ.get('ADMIN_EMAIL', 'fatihsenyuz12@gmail.com')
+        
+        logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
+        subject = "PLANN - Yeni İletişim Talebi"
+        html_content = f"""
+        <html>
+        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6;">
+            <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td align="center" style="padding: 20px 0;">
+                        <table width="600" border="0" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                            <tr>
+                                <td align="center" style="padding: 30px 0; background-color: #f9f9f9; border-bottom: 1px solid #e0e0e0; border-top-left-radius: 8px; border-top-right-radius: 8px;">
+                                    <img src="{logo_url}" alt="PLANN Logosu" style="max-width: 150px; height: auto;">
+                                </td>
+                            </tr>
+                            <tr style="background-color: #ffffff;">
+                                <td style="padding: 40px 30px; color: #333333; font-size: 16px;">
+                                    <h1 style="font-size: 24px; color: #111111; margin-top: 0; text-align: center;">Yeni İletişim Talebi</h1>
+                                    <p>Merhaba,</p>
+                                    <p>PLANN arayüzünden yeni bir iletişim talebi alındı. Detaylar aşağıdadır:</p>
+                                    <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin: 20px 0;">
+                                        <p style="margin: 10px 0;"><strong>Ad Soyad:</strong> {contact_name}</p>
+                                        <p style="margin: 10px 0;"><strong>Telefon:</strong> <a href="tel:{contact_phone}" style="color: #007bff; text-decoration: none;">{contact_phone}</a></p>
+                                        <p style="margin: 10px 0;"><strong>E-posta:</strong> {contact_email if contact_email else '<em>Belirtilmemiş</em>'}</p>
+                                        {f'<p style="margin: 10px 0;"><strong>Mesaj:</strong></p><p style="margin: 10px 0; padding: 10px; background-color: #ffffff; border-left: 3px solid #007bff;">{contact_message}</p>' if contact_message else ''}
+                                    </div>
+                                    <p style="text-align: center; margin-top: 30px; margin-bottom: 30px;">
+                                        Lütfen en kısa sürede müşteri ile iletişime geçin.
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr style="background-color: #f9f9f9;">
+                                <td align="center" style="padding: 20px 30px; font-size: 12px; color: #888888; border-top: 1px solid #e0e0e0; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
+                                    <p>© 2025 PLANN. Tüm hakları saklıdır.</p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        
+        result = await send_email(
+            to_email=admin_email,
+            subject=subject,
+            html_content=html_content,
+            to_name="PLANN Yönetim",
+            sender_name="PLANN Sistem"
+        )
+        
+        logging.info(f"📧 [SEND_CONTACT_NOTIFICATION] Email gönderim sonucu: {result}")
+        return result
+    except Exception as e:
+        logging.error(f"❌ [SEND_CONTACT_NOTIFICATION] E-posta gönderme sırasında beklenmedik hata: {e}", exc_info=True)
+        return False
+
+async def send_contact_confirmation_email(contact_name: str, contact_email: str):
+    """Kullanıcıya iletişim talebi onay e-postası gönderir"""
+    try:
+        logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
+        dashboard_url = "https://dev.royalpremiumcare.com"
+        subject = "PLANN - Talebiniz Alındı"
+        html_content = f"""
+        <html>
+        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6;">
+            <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td align="center" style="padding: 20px 0;">
+                        <table width="600" border="0" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                            <tr>
+                                <td align="center" style="padding: 30px 0; background-color: #f9f9f9; border-bottom: 1px solid #e0e0e0; border-top-left-radius: 8px; border-top-right-radius: 8px;">
+                                    <img src="{logo_url}" alt="PLANN Logosu" style="max-width: 150px; height: auto;">
+                                </td>
+                            </tr>
+                            <tr style="background-color: #ffffff;">
+                                <td style="padding: 40px 30px; color: #333333; font-size: 16px;">
+                                    <h1 style="font-size: 24px; color: #111111; margin-top: 0; text-align: center;">Talebiniz Alındı!</h1>
+                                    <p>Merhaba {contact_name},</p>
+                                    <p>PLANN iletişim formunu doldurduğunuz için teşekkür ederiz.</p>
+                                    <p>İletişim bilgileriniz kaydedildi ve en kısa sürede sizinle iletişime geçeceğiz.</p>
+                                    <p style="text-align: center; margin-top: 30px; margin-bottom: 30px;">
+                                        Sorularınız için bizimle iletişime geçebilirsiniz.
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr style="background-color: #ffffff;">
+                                <td align="center" style="padding: 0 30px 40px 30px;">
+                                    <a href="{dashboard_url}" target="_blank" style="background-color: #111111; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 25px; font-size: 16px; font-weight: bold; display: inline-block;">
+                                        PLANN'ı Keşfet
+                                    </a>
+                                </td>
+                            </tr>
+                            <tr style="background-color: #f9f9f9;">
+                                <td align="center" style="padding: 20px 30px; font-size: 12px; color: #888888; border-top: 1px solid #e0e0e0; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
+                                    <p>© 2025 PLANN. Tüm hakları saklıdır.</p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        
+        result = await send_email(
+            to_email=contact_email,
+            subject=subject,
+            html_content=html_content,
+            to_name=contact_name,
+            sender_name="PLANN"
+        )
+        
+        logging.info(f"📧 [SEND_CONTACT_CONFIRMATION] Kullanıcıya onay e-postası gönderildi: {contact_email} - Sonuç: {result}")
+        return result
+    except Exception as e:
+        logging.error(f"❌ [SEND_CONTACT_CONFIRMATION] Kullanıcıya e-posta gönderme hatası: {e}", exc_info=True)
+        return False
+
+@api_router.post("/contact")
+async def submit_contact(request: Request, contact_data: ContactRequest, db = Depends(get_db)):
+    """Landing page'den gelen iletişim formu"""
+    try:
+        logging.info(f"📞 [CONTACT] Yeni iletişim talebi: {contact_data.name} - {contact_data.phone}")
+        
+        # IP adresini al
+        client_ip = None
+        if request.client:
+            client_ip = request.client.host
+        # Nginx proxy arkasındaysa X-Forwarded-For'dan al
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        
+        contact_doc = {
+            "id": str(uuid.uuid4()),
+            "name": contact_data.name.strip(),
+            "phone": contact_data.phone.strip(),
+            "email": contact_data.email.strip() if contact_data.email else None,
+            "message": contact_data.message.strip() if contact_data.message else None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "status": "pending",  # pending, contacted, resolved
+            "ip_address": client_ip
+        }
+        
+        await db.contact_requests.insert_one(contact_doc)
+        logging.info(f"✅ [CONTACT] İletişim talebi kaydedildi: {contact_doc['id']}")
+        
+        # Admin'e e-posta bildirimi gönder
+        try:
+            await send_contact_notification_email(
+                contact_name=contact_data.name,
+                contact_phone=contact_data.phone,
+                contact_email=contact_data.email,
+                contact_message=contact_data.message
+            )
+        except Exception as email_error:
+            logging.error(f"⚠️ [CONTACT] Admin'e e-posta bildirimi gönderilemedi: {email_error}")
+            # E-posta gönderilemese bile kayıt başarılı olmalı
+        
+        # Kullanıcıya onay e-postası gönder (eğer e-posta girildiyse)
+        if contact_data.email and contact_data.email.strip():
+            try:
+                await send_contact_confirmation_email(
+                    contact_name=contact_data.name,
+                    contact_email=contact_data.email.strip()
+                )
+            except Exception as user_email_error:
+                logging.error(f"⚠️ [CONTACT] Kullanıcıya onay e-postası gönderilemedi: {user_email_error}")
+                # Kullanıcı e-postası gönderilemese bile kayıt başarılı olmalı
+        
+        return {"success": True, "message": "Talebiniz alındı, en kısa sürede size ulaşacağız."}
+    except Exception as e:
+        logging.error(f"❌ [CONTACT] İletişim talebi kaydedilemedi: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Bir hata oluştu, lütfen tekrar deneyin.")
+
 @api_router.post("/forgot-password")
 @rate_limit("3/hour")
 async def forgot_password(request: Request, forgot_request: ForgotPasswordRequest, db = Depends(get_db)):
@@ -1745,10 +1934,10 @@ async def create_appointment(request: Request, appointment: AppointmentCreate, c
         # Bu personelin o tarihteki tüm randevularını çek
         existing_appointments = await db.appointments.find(
             {
-                "organization_id": current_user.organization_id,
-                "staff_member_id": appointment.staff_member_id,
-                "appointment_date": appointment.appointment_date,
-                "status": {"$ne": "İptal"}
+        "organization_id": current_user.organization_id,
+        "staff_member_id": appointment.staff_member_id,
+        "appointment_date": appointment.appointment_date,
+        "status": {"$ne": "İptal"}
             },
             {"_id": 0, "appointment_time": 1, "service_id": 1}
         ).to_list(100)
@@ -1787,10 +1976,10 @@ async def create_appointment(request: Request, appointment: AppointmentCreate, c
                     {"organization_id": current_user.organization_id},
                     {"$inc": {"quota_usage": -1}}
                 )
-            raise HTTPException(
-                status_code=400,
-                detail=f"Bu personelin {appointment.appointment_date} tarihinde {appointment.appointment_time} saatinde zaten bir randevusu var. Lütfen başka bir saat seçin."
-            )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bu personelin {appointment.appointment_date} tarihinde {appointment.appointment_time} saatinde zaten bir randevusu var. Lütfen başka bir saat seçin."
+        )
         assigned_staff_id = appointment.staff_member_id
     else:
         # Otomatik atama: Bu hizmeti verebilen personellerden boş olanı bul
@@ -3974,7 +4163,7 @@ async def get_availability(request: Request, organization_id: str, service_id: s
         if not staff_members:
             # Hiç personel yoksa veya hiçbiri bu hizmeti vermiyorsa boş dön
             return {"available_slots": [], "message": "Bu hizmet için uygun personel bulunamadı"}
-        
+    
         # Tüm personellerin bu gün izinli olup olmadığını kontrol et
         all_staff_off = all(
             day_name in (staff.get('days_off') or [])
@@ -4157,32 +4346,32 @@ async def get_availability(request: Request, organization_id: str, service_id: s
                 # Seçili personel için busy slot
                 busy_slots.append(potential_start_time)
                 continue
-            else:
-                # Seçili personel için müsait
-                final_available_slots.append(potential_start_time)
         else:
-            # Otomatik atama - Tüm personeller için kontrol et
-            # En az bir personel müsait olmalı
-            busy_staff_at_slot = []
-            for appt in appointments_with_end_time:
-                appt_start = appt['start_time']
-                appt_end = appt['end_time']
-                
-                # Bu personel bu slotta dolu mu?
-                if (potential_start_time < appt_end and potential_end_time > appt_start):
-                    busy_staff_at_slot.append(appt['staff_member_id'])
+            # Seçili personel için müsait
+            final_available_slots.append(potential_start_time)
+    else:
+        # Otomatik atama - Tüm personeller için kontrol et
+        # En az bir personel müsait olmalı
+        busy_staff_at_slot = []
+        for appt in appointments_with_end_time:
+            appt_start = appt['start_time']
+            appt_end = appt['end_time']
             
-            busy_staff_unique = list(set(busy_staff_at_slot))
-            
-            # Eğer tüm personeller doluysa busy slot
-            if len(busy_staff_unique) >= len(staff_members):
-                busy_slots.append(potential_start_time)
-                logging.debug(f"   🚫 All staff busy at {potential_start_time}-{potential_end_time}")
-            else:
-                # En az bir personel müsait - slot müsait
-                final_available_slots.append(potential_start_time)
-                available_count = len(staff_members) - len(busy_staff_unique)
-                logging.debug(f"   ✅ Available slot: {potential_start_time}-{potential_end_time} ({available_count}/{len(staff_members)} staff available)")
+            # Bu personel bu slotta dolu mu?
+            if (potential_start_time < appt_end and potential_end_time > appt_start):
+                busy_staff_at_slot.append(appt['staff_member_id'])
+        
+        busy_staff_unique = list(set(busy_staff_at_slot))
+        
+        # Eğer tüm personeller doluysa busy slot
+        if len(busy_staff_unique) >= len(staff_members):
+            busy_slots.append(potential_start_time)
+            logging.debug(f"   🚫 All staff busy at {potential_start_time}-{potential_end_time}")
+        else:
+            # En az bir personel müsait - slot müsait
+            final_available_slots.append(potential_start_time)
+            available_count = len(staff_members) - len(busy_staff_unique)
+            logging.debug(f"   ✅ Available slot: {potential_start_time}-{potential_end_time} ({available_count}/{len(staff_members)} staff available)")
     
     logging.info(f"🔍 Service: {service_id}, Date: {date}, Duration: {service_duration}min")
     logging.info(f"👥 Qualified staff: {len(staff_members)} - {staff_ids}")
@@ -4240,10 +4429,10 @@ async def create_public_appointment(request: Request, appointment: AppointmentCr
         # Bu personelin o tarihteki tüm randevularını çek
         existing_appointments = await db.appointments.find(
             {
-                "organization_id": organization_id,
-                "staff_member_id": appointment.staff_member_id,
-                "appointment_date": appointment.appointment_date,
-                "status": {"$ne": "İptal"}
+            "organization_id": organization_id,
+            "staff_member_id": appointment.staff_member_id,
+            "appointment_date": appointment.appointment_date,
+            "status": {"$ne": "İptal"}
             },
             {"_id": 0, "appointment_time": 1, "service_id": 1}
         ).to_list(100)
@@ -4311,26 +4500,26 @@ async def create_public_appointment(request: Request, appointment: AppointmentCr
             if not admin_provides_service:
                 qualified_staff_query["role"] = {"$ne": "admin"}
             
-            qualified_staff = await db.users.find(
+        qualified_staff = await db.users.find(
                 qualified_staff_query,
                 {"_id": 0, "username": 1, "role": 1}
-            ).to_list(1000)
-            
-            if not qualified_staff:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Bu hizmet için uygun personel bulunamadı"
-                )
-            
+        ).to_list(1000)
+        
+        if not qualified_staff:
+            raise HTTPException(
+                status_code=400,
+                detail="Bu hizmet için uygun personel bulunamadı"
+            )
+        
             # Boş personel bul (duration'a göre çakışma kontrolü ile)
-            for staff in qualified_staff:
+        for staff in qualified_staff:
                 # Bu personelin o tarihteki tüm randevularını çek
                 existing_appointments = await db.appointments.find(
                     {
-                        "organization_id": organization_id,
-                        "staff_member_id": staff['username'],
-                        "appointment_date": appointment.appointment_date,
-                        "status": {"$ne": "İptal"}
+                "organization_id": organization_id,
+                "staff_member_id": staff['username'],
+                "appointment_date": appointment.appointment_date,
+                "status": {"$ne": "İptal"}
                     },
                     {"_id": 0, "appointment_time": 1, "service_id": 1}
                 ).to_list(100)
@@ -4366,19 +4555,19 @@ async def create_public_appointment(request: Request, appointment: AppointmentCr
                     assigned_staff_id = staff['username']
                     logging.info(f"✅ Public booking auto-assigned to {staff['username']} for {appointment.appointment_time}")
                     break
-            
-            if not assigned_staff_id:
-                # Kota artırıldı ama personel bulunamadı, geri al
-                plan_doc = await db.organization_plans.find_one({"organization_id": organization_id})
-                if plan_doc:
-                    await db.organization_plans.update_one(
-                        {"organization_id": organization_id},
-                        {"$inc": {"quota_usage": -1}}
-                    )
-                raise HTTPException(
-                    status_code=400,
-                    detail="Bu saat dilimi doludur. Lütfen başka bir saat seçin."
+        
+        if not assigned_staff_id:
+            # Kota artırıldı ama personel bulunamadı, geri al
+            plan_doc = await db.organization_plans.find_one({"organization_id": organization_id})
+            if plan_doc:
+                await db.organization_plans.update_one(
+                    {"organization_id": organization_id},
+                    {"$inc": {"quota_usage": -1}}
                 )
+            raise HTTPException(
+                status_code=400,
+                detail="Bu saat dilimi doludur. Lütfen başka bir saat seçin."
+            )
     
     # Randevuyu oluştur
     appointment_data = appointment.model_dump()
@@ -4548,6 +4737,48 @@ async def get_superadmin_stats(request: Request, current_user: UserInDB = Depend
     except Exception as e:
         logging.error(f"Error in get_superadmin_stats: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"İstatistikler alınırken hata oluştu: {str(e)}")
+
+@api_router.get("/superadmin/contact-requests")
+async def get_superadmin_contact_requests(request: Request, current_user: UserInDB = Depends(get_superadmin_user), db = Depends(get_db)):
+    """SuperAdmin için iletişim taleplerini getir"""
+    try:
+        contacts = await db.contact_requests.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+        return {"contacts": contacts}
+    except Exception as e:
+        logging.error(f"Error in get_superadmin_contact_requests: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Veriler yüklenirken hata oluştu")
+
+@api_router.put("/superadmin/contact-requests/{contact_id}/status")
+async def update_contact_status(
+    request: Request,
+    contact_id: str,
+    status_update: ContactStatusUpdate,
+    current_user: UserInDB = Depends(get_superadmin_user),
+    db = Depends(get_db)
+):
+    """Contact request durumunu güncelle - Sadece superadmin"""
+    try:
+        # Contact request'i bul
+        contact = await db.contact_requests.find_one({"id": contact_id}, {"_id": 0})
+        if not contact:
+            raise HTTPException(status_code=404, detail="İletişim talebi bulunamadı")
+        
+        # Durumu güncelle
+        await db.contact_requests.update_one(
+            {"id": contact_id},
+            {"$set": {"status": status_update.status}}
+        )
+        
+        logging.info(f"✅ [SUPERADMIN] Contact request {contact_id} durumu güncellendi: {status_update.status}")
+        
+        # Güncellenmiş contact request'i döndür
+        updated_contact = await db.contact_requests.find_one({"id": contact_id}, {"_id": 0})
+        return {"success": True, "contact": updated_contact}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"❌ [SUPERADMIN] Contact request durumu güncellenirken hata: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Durum güncellenirken hata oluştu")
 
 @api_router.get("/superadmin/organizations")
 async def get_superadmin_organizations(request: Request, current_user: UserInDB = Depends(get_superadmin_user), db = Depends(get_db)):
