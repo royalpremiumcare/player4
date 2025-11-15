@@ -206,6 +206,13 @@ const PublicBookingPage = () => {
   };
 
   const handleNext = () => {
+    // Eğer Adım 1'den geçiyorsa ve customer_can_choose_staff kapalıysa, Adım 3'e atla
+    if (currentStep === 1 && settings && !settings.customer_can_choose_staff) {
+      setSelectedStaff(null); // Otomatik atama için null yap
+      setCurrentStep(3); // Direkt Adım 3'e geç
+      return;
+    }
+    
     if (canGoNext() && currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     }
@@ -213,6 +220,11 @@ const PublicBookingPage = () => {
 
   const handleBack = () => {
     if (currentStep > 1) {
+      // Eğer Adım 3'ten geri geliyorsa ve customer_can_choose_staff kapalıysa, Adım 1'e dön
+      if (currentStep === 3 && settings && !settings.customer_can_choose_staff) {
+        setCurrentStep(1);
+        return;
+      }
       setCurrentStep(currentStep - 1);
     }
   };
@@ -425,8 +437,8 @@ const PublicBookingPage = () => {
             </Card>
           )}
 
-          {/* ADIM 2: Personel Seçimi */}
-          {currentStep === 2 && (
+          {/* ADIM 2: Personel Seçimi - Sadece customer_can_choose_staff aktifse göster */}
+          {currentStep === 2 && settings?.customer_can_choose_staff && (
             <Card className="p-4 sm:p-6 bg-white shadow-xl">
               <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
                 <span className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs sm:text-sm font-bold flex-shrink-0">2</span>
