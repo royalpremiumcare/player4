@@ -98,7 +98,8 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
       try {
         const response = await api.get("/users");
         const users = response.data || [];
-        const token = localStorage.getItem('authToken');
+        // Önce localStorage'dan kontrol et, yoksa sessionStorage'dan
+        const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
         if (token) {
           const payload = JSON.parse(atob(token.split('.')[1]));
           const currentUsername = payload.sub;
@@ -150,9 +151,12 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
     try {
       const dateStr = format(formData.appointment_date, "yyyy-MM-dd");
       
-      // Token'dan organization_id al
-      const token = localStorage.getItem('authToken');
-      if (!token) return;
+      // Token'dan organization_id al - Önce localStorage'dan kontrol et, yoksa sessionStorage'dan
+      const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+      if (!token) {
+        console.error("❌ Token bulunamadı");
+        return;
+      }
       
       const payload = JSON.parse(atob(token.split('.')[1]));
       const organization_id = payload.org_id;

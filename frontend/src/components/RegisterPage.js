@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, User, Mail, Lock, ArrowRight, Phone, Briefcase } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
@@ -12,6 +12,103 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 const RegisterPage = () => { 
     const navigate = useNavigate();
     const { register } = useAuth(); 
+
+    // Sayfa yüklendiğinde en üste scroll et ve iOS Chrome scroll sorununu önle
+    useEffect(() => {
+        window.scrollTo(0, 0);
+        
+        // iOS Chrome'a özel scroll düzeltmesi
+        const isIOSChrome = /CriOS/i.test(navigator.userAgent);
+        
+        if (isIOSChrome) {
+            let maxScroll = 0;
+            let isAtBottom = false;
+            let lastScrollTop = 0;
+            
+            const updateMaxScroll = () => {
+                const scrollHeight = document.documentElement.scrollHeight;
+                const clientHeight = document.documentElement.clientHeight;
+                maxScroll = Math.max(maxScroll, scrollHeight - clientHeight);
+            };
+            
+            const handleScroll = () => {
+                const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const scrollHeight = document.documentElement.scrollHeight;
+                const clientHeight = document.documentElement.clientHeight;
+                const currentMaxScroll = scrollHeight - clientHeight;
+                
+                updateMaxScroll();
+                
+                // En alta yakın mıyız kontrol et
+                const nearBottom = currentScrollTop + clientHeight >= scrollHeight - 1;
+                
+                if (nearBottom) {
+                    isAtBottom = true;
+                    // En alttayız, pozisyonu sabitle
+                    if (currentScrollTop > currentMaxScroll) {
+                        window.scrollTo({
+                            top: currentMaxScroll,
+                            behavior: 'auto'
+                        });
+                    }
+                    // Aşağı scroll yapılmaya çalışılıyorsa engelle
+                    if (currentScrollTop > lastScrollTop && currentScrollTop >= currentMaxScroll - 0.5) {
+                        window.scrollTo({
+                            top: currentMaxScroll,
+                            behavior: 'auto'
+                        });
+                    }
+                } else {
+                    isAtBottom = false;
+                }
+                
+                lastScrollTop = currentScrollTop;
+            };
+            
+            // İlk max scroll'u hesapla
+            setTimeout(updateMaxScroll, 100);
+            setTimeout(updateMaxScroll, 500);
+            setTimeout(updateMaxScroll, 1000);
+            
+            // Event listener'ları ekle
+            window.addEventListener('scroll', handleScroll, { passive: true });
+            window.addEventListener('resize', updateMaxScroll, { passive: true });
+            
+            // Touch event'leri için
+            let touchStartY = 0;
+            const handleTouchStart = (e) => {
+                touchStartY = e.touches[0].clientY;
+            };
+            
+            const handleTouchMove = (e) => {
+                if (isAtBottom) {
+                    const touchY = e.touches[0].clientY;
+                    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                    const scrollHeight = document.documentElement.scrollHeight;
+                    const clientHeight = document.documentElement.clientHeight;
+                    
+                    // En alttayız ve aşağı kaydırılmaya çalışılıyorsa engelle
+                    if (scrollTop + clientHeight >= scrollHeight - 1 && touchY < touchStartY) {
+                        e.preventDefault();
+                        window.scrollTo({
+                            top: scrollHeight - clientHeight,
+                            behavior: 'auto'
+                        });
+                    }
+                }
+            };
+            
+            document.addEventListener('touchstart', handleTouchStart, { passive: true });
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            
+            return () => {
+                window.removeEventListener('scroll', handleScroll);
+                window.removeEventListener('resize', updateMaxScroll);
+                document.removeEventListener('touchstart', handleTouchStart);
+                document.removeEventListener('touchmove', handleTouchMove);
+            };
+        }
+    }, []); 
 
     const [formData, setFormData] = useState({
         username: '',
@@ -61,8 +158,9 @@ const RegisterPage = () => {
     };
 
     return (
-        <div className="flex justify-center items-center min-h-screen bg-gradient-to-br from-[#f5f1e8] to-[#e8e0d5] p-4">
+        <div className="bg-white animate-slide-down register-page-container">
             <Toaster position="top-center" richColors />
+            <div className="flex justify-center items-start md:items-center min-h-screen md:min-h-screen p-4">
             <div className="w-full max-w-md">
                 {/* Logo & Title */}
                 <div className="text-center mb-8">
@@ -72,10 +170,10 @@ const RegisterPage = () => {
 
                 <Card className="shadow-2xl border-0">
                     <CardHeader className="space-y-1 pb-6">
-                        <CardTitle className="text-2xl font-bold text-center text-gray-900">
-                            Yeni Hesap Oluştur
+                        <CardTitle className="text-2xl md:text-3xl font-bold text-center text-gray-900">
+                            PLANN'ı 7 Gün Boyunca Ücretsiz Deneyin
                         </CardTitle>
-                        <CardDescription className="text-center">
+                        <CardDescription className="text-center text-base">
                             İşletmenizi yönetmek için hemen başlayın
                         </CardDescription>
                     </CardHeader>
@@ -173,7 +271,7 @@ const RegisterPage = () => {
 
                             <div className="space-y-2">
                                 <Label htmlFor="support_phone" className="text-sm font-semibold text-gray-700">
-                                    Destek Telefon Numarası
+                                    Telefon Numarası
                                 </Label>
                                 <div className="relative">
                                     <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -216,6 +314,11 @@ const RegisterPage = () => {
                             >
                                 {loading ? 'Kayıt Olunuyor...' : 'Hesap Oluştur'}
                             </Button>
+                            
+                            {/* Güvence Metni */}
+                            <p className="text-xs md:text-sm text-gray-600 text-center mt-3 leading-relaxed">
+                                Ücretsiz deneme süreniz boyunca hiçbir ücret alınmaz. Kredi kartı bilgisi gerekmez.
+                            </p>
                         </form>
 
                         <div className="mt-6 pt-6 border-t border-gray-200 text-center">
@@ -232,14 +335,15 @@ const RegisterPage = () => {
                     </CardContent>
                 </Card>
 
-                <div className="text-center mt-6">
+                <div className="text-center mt-4 md:mt-6">
                     <Button
-                        variant="ghost"
+                        variant="outline"
                         onClick={() => navigate('/')}
-                        className="text-gray-600 hover:text-gray-900"
+                        className="text-gray-900 hover:text-white hover:bg-gray-900 border-2 border-gray-900 px-6 py-3 text-base md:text-lg font-semibold rounded-lg transition-all duration-200 shadow-md"
                     >
                         ← Ana Sayfaya Dön
                     </Button>
+                </div>
                 </div>
             </div>
         </div>

@@ -1,15 +1,26 @@
-import { useState, useEffect } from "react";
-import { format } from "date-fns";
+import { useState, useEffect, useCallback } from "react";
+import { format, addDays, isToday, isTomorrow } from "date-fns";
 import { tr } from "date-fns/locale";
-import { Calendar, Clock, Phone, MessageSquare, Edit, Trash2, Check, X, ChevronLeft, ChevronRight, Search, MoreVertical, Filter } from "lucide-react";
+import { 
+  Calendar, 
+  Clock, 
+  Phone, 
+  MessageSquare, 
+  Edit, 
+  Trash2, 
+  Check, 
+  X, 
+  AlertCircle,
+  MoreVertical,
+  User,
+  FileText
+} from "lucide-react";
 import { toast } from "sonner";
-// import axios from "axios"; // SİLİNDİ
-import api from "../api/api"; // YENİ EKLENDİ (Token'ı otomatik ekler)
+import api from "../api/api";
+import { useAuth } from "../context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,64 +39,71 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-// const BACKEND_URL = process.env.REACT_APP_BACKEND_URL; // SİLİNDİ
-// const API = `${BACKEND_URL}/api`; // SİLİNDİ
-
-const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppointment, onRefresh }) => {
-  const [view, setView] = useState("today"); // today, past, future
-  const [filteredAppointments, setFilteredAppointments] = useState([]);
+const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppointment, onRefresh, onNavigate }) => {
+  const { token } = useAuth();
   const [deleteDialog, setDeleteDialog] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showSearchDialog, setShowSearchDialog] = useState(false);
-  const [staffMembers, setStaffMembers] = useState([]);
-  const [services, setServices] = useState([]);
-  const [selectedStaffFilter, setSelectedStaffFilter] = useState("all");
-  const [selectedServiceFilter, setSelectedServiceFilter] = useState("all");
-  const [currentUserFullName, setCurrentUserFullName] = useState("");
   const [settings, setSettings] = useState(null);
+  const [staffMembers, setStaffMembers] = useState([]);
+  const [currentStaffUsername, setCurrentStaffUsername] = useState(null);
+  const [personnelStats, setPersonnelStats] = useState(null);
 
   const today = format(new Date(), "yyyy-MM-dd");
+  const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
+
+  // Randevu bitiş saatini hesapla
+  const calculateEndTime = (startTime, duration) => {
+    if (!startTime || !duration) {
+      console.log("⚠️ calculateEndTime: startTime veya duration yok", { startTime, duration });
+      return null;
+    }
+    try {
+      const [hours, minutes] = startTime.split(':').map(Number);
+      const totalMinutes = hours * 60 + minutes + (typeof duration === 'number' ? duration : parseInt(duration, 10));
+      const endHours = Math.floor(totalMinutes / 60);
+      const endMinutes = totalMinutes % 60;
+      const result = `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
+      console.log(`✅ calculateEndTime: ${startTime} + ${duration}dk = ${result}`);
+      return result;
+    } catch (error) {
+      console.error("❌ calculateEndTime hatası:", error, { startTime, duration });
+      return null;
+    }
+  };
   
-  useEffect(() => {
-    loadStaffMembers();
-    loadServices();
-    loadCurrentUserInfo();
-    loadSettings();
+  const loadPersonnelStats = useCallback(async () => {
+    try {
+      const response = await api.get("/stats/personnel");
+      setPersonnelStats(response.data);
+    } catch (error) {
+      console.error("Personel istatistikleri yüklenemedi:", error);
+    }
   }, []);
 
-  const loadStaffMembers = async () => {
-    try {
-      const response = await api.get("/users");
-      setStaffMembers(response.data || []);
-    } catch (error) {
-      console.error("Personeller yüklenemedi:", error);
+  useEffect(() => {
+    loadSettings();
+    loadStaffMembers();
+    if (userRole === 'staff') {
+      loadCurrentStaffUsername();
+      loadPersonnelStats();
     }
-  };
+  }, [userRole, loadPersonnelStats]);
 
-  const loadServices = async () => {
-    try {
-      const response = await api.get("/services");
-      setServices(response.data || []);
-    } catch (error) {
-      console.error("Hizmetler yüklenemedi:", error);
+  // Randevular güncellendiğinde personel stats'ını yenile
+  useEffect(() => {
+    if (userRole === 'staff') {
+      loadPersonnelStats();
     }
-  };
+  }, [appointments.length, userRole, loadPersonnelStats]);
 
-  const loadCurrentUserInfo = async () => {
+  const loadCurrentStaffUsername = async () => {
     try {
-      const token = localStorage.getItem('authToken');
       if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const currentUsername = payload.sub;
-        const response = await api.get("/users");
-        const users = response.data || [];
-        const currentUser = users.find(u => u.username === currentUsername);
-        if (currentUser && currentUser.full_name) {
-          setCurrentUserFullName(currentUser.full_name);
-        }
+        // Token'dan username'i çıkar
+        const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+        setCurrentStaffUsername(tokenPayload.sub || tokenPayload.username);
       }
     } catch (error) {
-      console.error("Kullanıcı bilgisi yüklenemedi:", error);
+      console.error("Kullanıcı bilgisi alınamadı:", error);
     }
   };
 
@@ -97,6 +115,15 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
       console.error("Ayarlar yüklenemedi:", error);
     }
   };
+
+  const loadStaffMembers = async () => {
+    try {
+      const response = await api.get("/users");
+      setStaffMembers(response.data || []);
+    } catch (error) {
+      console.error("Personeller yüklenemedi:", error);
+    }
+  };
   
   const getStaffName = (staffId) => {
     if (!staffId) return "Atanmadı";
@@ -104,61 +131,78 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
     return staff?.full_name || staff?.username || "Bilinmiyor";
   };
 
-  useEffect(() => {
-    filterAppointments();
-  }, [appointments, view, searchTerm, selectedStaffFilter, selectedServiceFilter]);
-
-  const filterAppointments = () => {
-    let filtered = [...appointments];
-
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (apt) =>
-          apt.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          apt.phone.includes(searchTerm) ||
-          apt.service_name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+  const getStatusBorderColor = (status) => {
+    switch (status) {
+      case "Tamamlandı":
+        return "border-l-4 border-l-green-500";
+      case "İptal":
+        return "border-l-4 border-l-red-500";
+      case "Bekliyor":
+        return "border-l-4 border-l-yellow-500";
+      default:
+        return "border-l-4 border-l-gray-300";
     }
-
-    // Staff filter
-    if (selectedStaffFilter !== "all") {
-      filtered = filtered.filter((apt) => apt.staff_member_id === selectedStaffFilter);
-    }
-
-    // Service filter
-    if (selectedServiceFilter !== "all") {
-      filtered = filtered.filter((apt) => apt.service_id === selectedServiceFilter);
-    }
-
-    // Date filter
-    if (view === "today") {
-      filtered = filtered.filter((apt) => apt.appointment_date === today);
-    } else if (view === "past") {
-      filtered = filtered.filter((apt) => apt.appointment_date < today);
-    } else if (view === "future") {
-      filtered = filtered.filter((apt) => apt.appointment_date > today);
-    }
-
-    // Sort by date and time
-    filtered.sort((a, b) => {
-      if (a.appointment_date !== b.appointment_date) {
-        return view === "past"
-          ? b.appointment_date.localeCompare(a.appointment_date)
-          : a.appointment_date.localeCompare(b.appointment_date);
-      }
-      return a.appointment_time.localeCompare(b.appointment_time);
-    });
-
-    setFilteredAppointments(filtered);
   };
+
+  // Bugünün randevuları - Personel için sadece kendi randevuları
+  const todayAppointments = appointments.filter(apt => {
+    const aptDate = apt.appointment_date || apt.date;
+    if (!aptDate) {
+      console.log("⚠️ Randevu tarihi yok:", apt);
+      return false;
+    }
+    if (aptDate !== today) {
+      console.log(`⚠️ Randevu bugün değil: ${aptDate} !== ${today}`, apt);
+      return false;
+    }
+    if (userRole === 'staff' && currentStaffUsername) {
+      if (apt.staff_member_id !== currentStaffUsername) {
+        console.log(`⚠️ Randevu bu personele ait değil: ${apt.staff_member_id} !== ${currentStaffUsername}`, apt);
+        return false;
+      }
+    }
+    console.log("✅ Randevu bugün ve görüntüleniyor:", apt);
+    return true;
+  });
+  
+  // Yarının randevuları - Personel için sadece kendi randevuları
+  const tomorrowAppointments = appointments
+    .filter(apt => {
+      const aptDate = apt.appointment_date || apt.date;
+      if (!aptDate) {
+        console.log("⚠️ Yarın filtresi: Randevu tarihi yok:", apt);
+        return false;
+      }
+      if (aptDate !== tomorrow) {
+        console.log(`⚠️ Yarın filtresi: Randevu yarın değil: ${aptDate} !== ${tomorrow}`, apt);
+        return false;
+      }
+      if (userRole === 'staff' && currentStaffUsername) {
+        if (apt.staff_member_id !== currentStaffUsername) {
+          console.log(`⚠️ Yarın filtresi: Randevu bu personele ait değil: ${apt.staff_member_id} !== ${currentStaffUsername}`, apt);
+          return false;
+        }
+      }
+      console.log("✅ Yarın filtresi: Randevu yarın ve görüntüleniyor:", apt);
+      return true;
+    })
+    .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
+  
+  console.log(`📊 Dashboard Debug: today=${today}, tomorrow=${tomorrow}, total appointments=${appointments.length}, todayAppointments=${todayAppointments.length}, tomorrowAppointments=${tomorrowAppointments.length}`);
+
+  // Randevuları saat sırasına göre sırala
+  const sortedTodayAppointments = [...todayAppointments].sort((a, b) => 
+    a.appointment_time.localeCompare(b.appointment_time)
+  );
 
   const handleStatusChange = async (appointmentId, newStatus) => {
     try {
-      // await axios.put(`${API}/appointments/${appointmentId}`, { status: newStatus }); // ESKİ
-      await api.put(`/appointments/${appointmentId}`, { status: newStatus }); // YENİ
+      await api.put(`/appointments/${appointmentId}`, { status: newStatus });
       toast.success("Durum güncellendi");
       await onRefresh();
+      if (userRole === 'staff') {
+        await loadPersonnelStats();
+      }
     } catch (error) {
       toast.error("Durum güncellenemedi");
     }
@@ -166,8 +210,7 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
 
   const handleDelete = async (appointmentId) => {
     try {
-      // await axios.delete(`${API}/appointments/${appointmentId}`); // ESKİ
-      await api.delete(`/appointments/${appointmentId}`); // YENİ
+      await api.delete(`/appointments/${appointmentId}`);
       toast.success("Randevu silindi");
       setDeleteDialog(null);
       await onRefresh();
@@ -181,274 +224,223 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
   };
 
   const handleWhatsApp = (phone) => {
-    // Remove all non-digit characters
     let cleanPhone = phone.replace(/\D/g, "");
-    
-    // Remove leading 0 if exists (Turkish format)
     if (cleanPhone.startsWith("0")) {
       cleanPhone = cleanPhone.substring(1);
     }
-    
-    // Add +90 if not already present
     if (!cleanPhone.startsWith("90")) {
       cleanPhone = "90" + cleanPhone;
     }
-    
     window.open(`https://wa.me/${cleanPhone}`, "_blank");
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      Bekliyor: "default",
-      Tamamlandı: "success",
-      İptal: "destructive"
-    };
-    return <Badge variant={variants[status]} data-testid={`status-${status}`}>{status}</Badge>;
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "Tamamlandı":
+        return "text-green-500";
+      case "İptal":
+        return "text-red-500";
+      case "Bekliyor":
+        return "text-yellow-500";
+      default:
+        return "text-gray-500";
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case "Tamamlandı":
+        return <Check className="w-4 h-4 text-green-500" />;
+      case "İptal":
+        return <X className="w-4 h-4 text-red-500" />;
+      default:
+        return <Clock className="w-4 h-4 text-yellow-500" />;
+    }
+  };
+
+  // Progress bar rengi - %90'dan fazla ise uyarı rengi
+  const getProgressColor = (percentage) => {
+    if (percentage >= 90) {
+      return "bg-gradient-to-r from-yellow-400 to-red-500";
+    }
+    return "bg-blue-600";
   };
 
   return (
-    <div className="space-y-6">
-      {/* Tarih Bilgisi - EN ÜSTTE */}
-      <div className="text-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200">
-        <h2 className="text-2xl md:text-3xl font-bold text-gray-900" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-          {format(new Date(), "d MMMM yyyy, EEEE", { locale: tr })}
-        </h2>
-        {currentUserFullName && (
-          <p className="text-sm text-blue-600 mt-1">Hoş geldiniz, {currentUserFullName}</p>
-        )}
-      </div>
+    <div className="min-h-screen bg-gray-50 pb-20" style={{ fontFamily: 'Inter, sans-serif', position: 'relative' }}>
+      {/* KART 1: Abonelik / Kota Durumu */}
+      {stats?.quota && userRole === 'admin' && (
+        <div className="px-4 pt-6 pb-4">
+          <Card className="bg-white shadow-md border border-gray-200 rounded-xl p-6">
+            <div className="space-y-4">
+              {/* Başlık */}
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  {stats.quota.is_trial ? "Ücretsiz Deneme" : stats.quota.plan_name}
+                </h2>
+                  {stats.quota.is_trial && stats.quota.trial_days_remaining !== undefined && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    Kalan {stats.quota.trial_days_remaining} gün
+                    </p>
+                  )}
+              </div>
 
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-blue-700 font-medium">Bugünkü Randevular</p>
-                <p className="text-3xl font-bold text-blue-900 mt-1">{stats.today_appointments}</p>
+              {/* Kota Bilgisi */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Randevu Kotası</span>
+                  <span className={`font-semibold ${
+                    stats.quota.is_low_quota ? 'text-red-600' : 'text-gray-900'
+                  }`}>
+                    {stats.quota.quota_usage} / {stats.quota.quota_limit}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div
+                    className={`h-2.5 rounded-full ${getProgressColor(stats.quota.quota_percentage)}`}
+                    style={{ width: `${Math.min(stats.quota.quota_percentage, 100)}%` }}
+                  ></div>
               </div>
-              <Calendar className="w-10 h-10 text-blue-500" />
-            </div>
-          </Card>
-          
-          <Card className="p-4 bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-green-700 font-medium">Tamamlanan</p>
-                <p className="text-3xl font-bold text-green-900 mt-1">{stats.today_completed}</p>
+              <p className="text-xs text-gray-600">
+                Kalan: <span className="font-semibold">{stats.quota.quota_remaining}</span> randevu
+              </p>
               </div>
-              <Check className="w-10 h-10 text-green-500" />
+
+              {/* Uyarı Mesajları */}
+              {stats.quota.is_low_quota && (
+                <div className="flex items-center gap-2 text-xs text-red-600 font-semibold bg-red-50 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Limitiniz dolmak üzere, paketinizi yükseltin</span>
+                </div>
+              )}
+              {stats.quota.is_trial && stats.quota.trial_days_remaining !== undefined && stats.quota.trial_days_remaining <= 2 && (
+                <div className="flex items-center gap-2 text-xs text-red-600 font-semibold bg-red-50 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Trial süreniz bitiyor, paket seçin</span>
+                </div>
+              )}
             </div>
-          </Card>
+            </Card>
         </div>
       )}
 
-      {/* Compact Header with Actions */}
-      <div className="flex flex-col gap-3">
-        {/* Top Bar: New Appointment + Actions */}
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-gray-900">Randevular</h3>
-          <div className="flex gap-2">
-            <Button onClick={onNewAppointment} size="sm" className="bg-blue-500 hover:bg-blue-600" data-testid="add-appointment-button">
-              + Yeni
-            </Button>
-            <Button onClick={onRefresh} size="sm" variant="outline" data-testid="refresh-button">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </Button>
-            <Button onClick={() => setShowSearchDialog(!showSearchDialog)} size="sm" variant="outline">
-              <Search className="w-4 h-4" />
-            </Button>
+      {/* KART 2: Hızlı İstatistikler */}
+      {stats && userRole === 'admin' && (
+        <div className="px-4 py-4">
+          <Card className="bg-white shadow-md border border-gray-200 rounded-xl p-6">
+            <div className="space-y-4">
+              <h2 className="text-lg font-bold text-gray-900">Hızlı Bakış</h2>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-600 mb-1">Bugünkü</p>
+                  <p className="text-xl font-bold text-gray-900">{stats.today_appointments}</p>
           </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-600 mb-1">Tamamlanan</p>
+                  <p className="text-xl font-bold text-green-600">{stats.today_completed}</p>
         </div>
-
-        {/* Filters Row (Compact) - Admin only */}
-        {userRole === 'admin' && staffMembers.length > 0 && (
-          <div className="flex flex-wrap gap-2 items-center p-2 bg-purple-50 rounded-lg border border-purple-200">
-            <span className="text-xs text-gray-600 font-medium">Filtre:</span>
-            <Select value={selectedStaffFilter} onValueChange={setSelectedStaffFilter}>
-              <SelectTrigger className="h-8 w-[140px] text-xs">
-                <SelectValue placeholder="Personel" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tüm Personel</SelectItem>
-                {staffMembers.map((staff) => (
-                  <SelectItem key={staff.username} value={staff.username}>
-                    {staff.full_name || staff.username}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={selectedServiceFilter} onValueChange={setSelectedServiceFilter}>
-              <SelectTrigger className="h-8 w-[140px] text-xs">
-                <SelectValue placeholder="Hizmet" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tüm Hizmet</SelectItem>
-                {services.map((service) => (
-                  <SelectItem key={service.id} value={service.id}>
-                    {service.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {(selectedStaffFilter !== "all" || selectedServiceFilter !== "all") && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setSelectedStaffFilter("all");
-                  setSelectedServiceFilter("all");
-                }}
-                className="h-7 text-xs text-purple-600 hover:text-purple-700"
-              >
-                Temizle
-              </Button>
-            )}
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-600 mb-1">Bugünkü Hizmet Tutarı</p>
+                  <p className="text-xl font-bold text-blue-600">{stats.bugunku_toplam_hizmet_tutari?.toLocaleString('tr-TR') || 0} ₺</p>
           </div>
-        )}
       </div>
-
-      {/* Search Dialog */}
-      {showSearchDialog && (
-        <Card className="p-4 mb-4 bg-blue-50 border-blue-200">
-          <div className="flex items-center gap-2 mb-2">
-            <Search className="w-4 h-4 text-blue-600" />
-            <h3 className="font-semibold text-gray-900">Ara</h3>
-            <button 
-              onClick={() => {
-                setShowSearchDialog(false);
-                setSearchTerm("");
-              }}
-              className="ml-auto text-gray-500 hover:text-gray-700"
-            >
-              <X className="w-4 h-4" />
-            </button>
           </div>
-          <Input
-            data-testid="search-input"
-            type="text"
-            placeholder="Müşteri adı, telefon veya hizmet ara..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full"
-            autoFocus
-          />
-          {searchTerm && (
-            <p className="text-sm text-gray-600 mt-2">
-              {filteredAppointments.length} sonuç bulundu
-            </p>
-          )}
         </Card>
+        </div>
       )}
 
-      {/* Filters moved to compact header above */}
+      {/* KART: Personel Hızlı Bakış (Sadece personel görür) */}
+      {personnelStats && userRole === 'staff' && (
+        <div className="px-4 py-4">
+          <Card className="bg-white shadow-md border border-gray-200 rounded-xl p-6">
+            <div className="space-y-4">
+              <h2 className="text-lg font-bold text-gray-900">Hızlı Bakış</h2>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-600 mb-1">Bugünkü</p>
+                  <p className="text-xl font-bold text-gray-900">{todayAppointments.length}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-600 mb-1">Tamamlanan</p>
+                  <p className="text-xl font-bold text-green-600">{personnelStats.completed_appointments_count || 0}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-600 mb-1">Bugünkü Hizmet Tutarı</p>
+                  <p className="text-xl font-bold text-blue-600">{personnelStats.total_revenue_generated?.toLocaleString('tr-TR') || 0} ₺</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
-      {/* View Toggle - Modern Tabs Style */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
-        <button
-          data-testid="view-past"
-          onClick={() => setView("past")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-            view === "past"
-              ? "bg-white text-blue-600 shadow-sm"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Geçmiş
-          <span className="ml-1.5 text-xs opacity-70">
-            ({appointments.filter(a => a.appointment_date < today).length})
-          </span>
-        </button>
-        <button
-          data-testid="view-today"
-          onClick={() => setView("today")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-            view === "today"
-              ? "bg-white text-blue-600 shadow-sm"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Bugün
-          <span className="ml-1.5 text-xs opacity-70">
-            ({appointments.filter(a => a.appointment_date === today).length})
-          </span>
-        </button>
-        <button
-          data-testid="view-future"
-          onClick={() => setView("future")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-            view === "future"
-              ? "bg-white text-blue-600 shadow-sm"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Gelecek
-          <span className="ml-1.5 text-xs opacity-70">
-            ({appointments.filter(a => a.appointment_date > today).length})
-          </span>
-        </button>
+      {/* KART 3: Bugünün Akışı (En Önemli Kart) */}
+      <div className="px-4 py-4">
+        <Card className="bg-white shadow-md border border-gray-200 rounded-xl p-6">
+          <div className="space-y-4">
+            {/* Başlık */}
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Bugünün Randevuları</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {format(new Date(), "d MMMM yyyy, EEEE", { locale: tr })}
+              </p>
       </div>
 
-      {/* Appointments List */}
-      <div className="space-y-4">
-        {filteredAppointments.length === 0 ? (
-          <Card className="p-8 text-center">
-            <Calendar className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500">Randevu bulunamadı</p>
-          </Card>
+            {/* Timeline Görünümü */}
+            <div className="space-y-3">
+              {sortedTodayAppointments.length === 0 ? (
+                <div className="text-center py-8">
+                  <Calendar className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                  <p className="text-sm text-gray-500">Bugün randevu bulunmuyor</p>
+                </div>
         ) : (
-          filteredAppointments.map((appointment) => (
-            <Card
+                sortedTodayAppointments.map((appointment, index) => (
+                  <div
               key={appointment.id}
-              data-testid={`appointment-card-${appointment.id}`}
-              className="p-4 appointment-card hover:shadow-lg border-l-4"
-              style={{
-                borderLeftColor:
-                  appointment.status === "Tamamlandı"
-                    ? "#10b981"
-                    : appointment.status === "İptal"
-                    ? "#ef4444"
-                    : "#f59e0b"
-              }}
-            >
-              <div className="flex flex-col lg:flex-row justify-between gap-4">
-                <div className="flex-1 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">{appointment.customer_name}</h3>
-                      <p className="text-sm text-blue-600 font-medium">{appointment.service_name}</p>
-                    </div>
-                    {getStatusBadge(appointment.status)}
+                    className={`relative flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors ${
+                      appointment.status === "İptal" ? "opacity-60" : ""
+                    } ${getStatusBorderColor(appointment.status)}`}
+                  >
+                    {/* Zaman */}
+                    <div className="flex-shrink-0 w-16">
+                      <p className="text-base font-semibold text-gray-900">
+                        {appointment.appointment_time}
+                      </p>
+                      {(() => {
+                        const endTime = calculateEndTime(appointment.appointment_time, appointment.service_duration);
+                        if (endTime) {
+                          return (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {endTime}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                   </div>
 
-                  <div className="flex flex-wrap gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-blue-500" />
-                      <span className="text-gray-600">{format(new Date(appointment.appointment_date), "d MMMM yyyy", { locale: tr })}</span>
+                    {/* İçerik */}
+                    <div className="flex-1 min-w-0 pr-20">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <h3 className={`text-base font-semibold text-gray-900 ${
+                          appointment.status === "İptal" ? "line-through" : ""
+                        }`}>
+                          {appointment.customer_name}
+                        </h3>
+                        {getStatusIcon(appointment.status)}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-blue-500" />
-                      <span className="text-gray-900 font-medium">{appointment.appointment_time}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-700">{appointment.phone}</span>
+                      <p className="text-sm text-gray-600 mb-1">
+                        {appointment.service_name}
+                      </p>
+                      <div className="flex items-center gap-2 mb-2">
                     <button
-                      data-testid={`call-button-${appointment.id}`}
                       onClick={() => handleCall(appointment.phone)}
-                      className="ml-2 p-1.5 hover:bg-green-100 rounded-full transition-colors"
+                          className="p-1.5 hover:bg-green-100 rounded-full transition-colors"
                       title="Ara"
                     >
                       <Phone className="w-4 h-4 text-green-600" />
                     </button>
                     <button
-                      data-testid={`whatsapp-button-${appointment.id}`}
                       onClick={() => handleWhatsApp(appointment.phone)}
                       className="p-1.5 hover:bg-green-100 rounded-full transition-colors"
                       title="WhatsApp"
@@ -456,77 +448,186 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
                       <MessageSquare className="w-4 h-4 text-green-600" />
                     </button>
                   </div>
-
-                  {/* Model D: Atanan Personel - Sadece customer_can_choose_staff true ise göster */}
-                  {settings?.customer_can_choose_staff && (
-                    <div className="flex items-center gap-2 bg-purple-50 px-3 py-2 rounded-lg">
-                      <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                      <span className="text-sm font-medium text-purple-900">
-                        Atanan Personel:
-                      </span>
-                      <span className="text-sm text-purple-700 font-semibold">
-                        {getStaffName(appointment.staff_member_id)}
-                      </span>
+                      {/* Not Bilgisi - Varsa göster */}
+                      {appointment.notes && appointment.notes.trim() && (
+                        <div className="flex items-start gap-1.5 text-xs text-gray-600 bg-amber-50 border border-amber-200 px-2 py-1.5 rounded-md">
+                          <FileText className="w-3 h-3 text-amber-600 flex-shrink-0 mt-0.5" />
+                          <span className="font-medium text-amber-800">{appointment.notes}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
 
-                  {appointment.notes && (
-                    <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                      <span className="font-medium">Not:</span> {appointment.notes}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex lg:flex-col gap-2">
+                    {/* Sağ Üst Köşe: Üç Nokta Menüsü */}
+                    <div className="absolute top-3 right-3">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                            title="Daha fazla"
+                          >
+                            <MoreVertical className="w-4 h-4 text-gray-600" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48" style={{ zIndex: 1100 }}>
                   {appointment.status === "Bekliyor" && (
-                    <Button
-                      data-testid={`complete-button-${appointment.id}`}
-                      onClick={() => handleStatusChange(appointment.id, "Tamamlandı")}
-                      size="sm"
-                      className="bg-green-500 hover:bg-green-600"
+                            <DropdownMenuItem
+                              onClick={() => handleStatusChange(appointment.id, "İptal")}
+                              className="text-red-600 focus:text-red-600 focus:bg-red-50"
                     >
-                      <Check className="w-4 h-4 mr-1" />
-                      Tamamla
-                    </Button>
+                              <X className="w-4 h-4 mr-2" />
+                              İptal Et
+                            </DropdownMenuItem>
                   )}
-                  <Button
-                    data-testid={`edit-button-${appointment.id}`}
+                          <DropdownMenuItem
                     onClick={() => onEditAppointment(appointment)}
-                    size="sm"
-                    variant="outline"
                   >
-                    <Edit className="w-4 h-4 mr-1" />
+                            <Edit className="w-4 h-4 mr-2" />
                     Düzenle
-                  </Button>
-                  {appointment.status === "Bekliyor" && (
-                    <Button
-                      data-testid={`cancel-button-${appointment.id}`}
-                      onClick={() => handleStatusChange(appointment.id, "İptal")}
-                      size="sm"
-                      variant="outline"
-                      className="text-red-600 hover:bg-red-50"
-                    >
-                      <X className="w-4 h-4 mr-1" />
-                      İptal
-                    </Button>
-                  )}
-                  <Button
-                    data-testid={`delete-button-${appointment.id}`}
-                    onClick={() => setDeleteDialog(appointment)}
-                    size="sm"
-                    variant="outline"
-                    className="text-red-600 hover:bg-red-50"
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => setDeleteDialog(appointment)}
+                            className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Sil
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    {/* Sağ Alt Köşe: Personel Etiketi (Admin için) */}
+                    {userRole === 'admin' && appointment.staff_member_id && (
+                      <div className="absolute bottom-3 right-3 flex items-center gap-1 text-[10px] text-gray-500 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                        <User className="w-2.5 h-2.5 text-blue-600" />
+                        <span className="font-medium text-blue-700">Personel: {getStaffName(appointment.staff_member_id)}</span>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* KART 4: Yaklaşan Randevular */}
+      {tomorrowAppointments.length > 0 && (
+        <div className="px-4 py-4">
+          <Card className="bg-white shadow-md border border-gray-200 rounded-xl p-6">
+            <div className="space-y-4">
+              <h2 className="text-lg font-bold text-gray-900">Yarının Özeti</h2>
+              <div className="space-y-3">
+                {tomorrowAppointments.map((appointment) => (
+                  <div
+                    key={appointment.id}
+                    className={`relative flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors ${
+                      appointment.status === "İptal" ? "opacity-60" : ""
+                    } ${getStatusBorderColor(appointment.status)}`}
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                    <div className="flex-shrink-0 w-16">
+                      <p className="text-sm font-semibold text-gray-900">
+                        {appointment.appointment_time}
+                      </p>
+                      {(() => {
+                        const endTime = calculateEndTime(appointment.appointment_time, appointment.service_duration);
+                        if (endTime) {
+                          return (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {endTime}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                    <div className="flex-1 min-w-0 pr-20">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <h3 className={`text-sm font-semibold text-gray-900 ${
+                          appointment.status === "İptal" ? "line-through" : ""
+                        }`}>
+                          {appointment.customer_name}
+                        </h3>
+                        {getStatusIcon(appointment.status)}
+                      </div>
+                      <p className="text-xs text-gray-600 mb-1">
+                        {appointment.service_name}
+                      </p>
+                      <div className="flex items-center gap-2 mb-2">
+                        <button
+                          onClick={() => handleCall(appointment.phone)}
+                          className="p-1.5 hover:bg-green-100 rounded-full transition-colors"
+                          title="Ara"
+                        >
+                          <Phone className="w-4 h-4 text-green-600" />
+                        </button>
+                        <button
+                          onClick={() => handleWhatsApp(appointment.phone)}
+                          className="p-1.5 hover:bg-green-100 rounded-full transition-colors"
+                          title="WhatsApp"
+                        >
+                          <MessageSquare className="w-4 h-4 text-green-600" />
+                        </button>
+                      </div>
+                      {/* Not Bilgisi - Varsa göster */}
+                      {appointment.notes && appointment.notes.trim() && (
+                        <div className="flex items-start gap-1.5 text-xs text-gray-600 bg-amber-50 border border-amber-200 px-2 py-1.5 rounded-md">
+                          <FileText className="w-3 h-3 text-amber-600 flex-shrink-0 mt-0.5" />
+                          <span className="font-medium text-amber-800">{appointment.notes}</span>
+                        </div>
+                      )}
+                    </div>
+                    {/* Sağ Üst Köşe: Üç Nokta Menüsü */}
+                    <div className="absolute top-3 right-3">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                            title="Daha fazla"
+                          >
+                            <MoreVertical className="w-4 h-4 text-gray-600" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48" style={{ zIndex: 1100 }}>
+                          {appointment.status === "Bekliyor" && (
+                            <DropdownMenuItem
+                              onClick={() => handleStatusChange(appointment.id, "İptal")}
+                              className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                            >
+                              <X className="w-4 h-4 mr-2" />
+                              İptal Et
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            onClick={() => onEditAppointment(appointment)}
+                          >
+                            <Edit className="w-4 h-4 mr-2" />
+                            Düzenle
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => setDeleteDialog(appointment)}
+                            className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Sil
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    {/* Sağ Alt Köşe: Personel Etiketi (Admin için) */}
+                    {userRole === 'admin' && appointment.staff_member_id && (
+                      <div className="absolute bottom-3 right-3 flex items-center gap-1 text-[10px] text-gray-500 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                        <User className="w-2.5 h-2.5 text-blue-600" />
+                        <span className="font-medium text-blue-700">Personel: {getStaffName(appointment.staff_member_id)}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
                 </div>
               </div>
             </Card>
-          ))
+        </div>
         )}
-      </div>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteDialog} onOpenChange={() => setDeleteDialog(null)}>
@@ -541,7 +642,6 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
           <AlertDialogFooter>
             <AlertDialogCancel>İptal</AlertDialogCancel>
             <AlertDialogAction
-              data-testid="confirm-delete-button"
               onClick={() => handleDelete(deleteDialog?.id)}
               className="bg-red-500 hover:bg-red-600"
             >

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import "@/App.css";
 import api from "./api/api"; 
 import { Toaster } from "@/components/ui/sonner";
@@ -7,21 +7,35 @@ import { useAuth } from "./context/AuthContext";
 import { io } from "socket.io-client";
 
 import Dashboard from "@/components/Dashboard";
+import CalendarView from "@/components/Calendar";
 import AppointmentForm from "@/components/AppointmentForm";
+import AppointmentFormWizard from "@/components/AppointmentFormWizard";
 import ServiceManagement from "@/components/ServiceManagement";
 import CashRegister from "@/components/CashRegister";
 import Settings from "@/components/Settings";
+import SettingsSubscription from "@/components/SettingsSubscription";
+import SettingsProfile from "@/components/SettingsProfile";
+import Finance from "@/components/Finance";
 import Customers from "@/components/Customers";
 import ImportData from "@/components/ImportData";
 import StaffManagement from "@/components/StaffManagement";
 import AuditLogs from "@/components/AuditLogs";
-import { Menu, Calendar, Briefcase, DollarSign, SettingsIcon, Users, Upload, LogOut, Moon, Sun, RefreshCw, UserCog, FileText } from "lucide-react";
+import HelpCenter from "@/components/HelpCenter";
+import { Calendar, Briefcase, DollarSign, SettingsIcon, Users, Upload, LogOut, Moon, Sun, RefreshCw, UserCog, FileText, Home, Plus, CreditCard, User, HelpCircle, Package, Bell } from "lucide-react";
 import { useTheme } from "./context/ThemeContext";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 
 function App() {
-  const { logout, userRole } = useAuth();
+  const { logout, userRole, token } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const bottomNavRef = useRef(null);
   
   const [currentView, setCurrentView] = useState("dashboard");
   const [services, setServices] = useState([]);
@@ -29,7 +43,6 @@ function App() {
   const [stats, setStats] = useState(null);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [settings, setSettings] = useState(null);
@@ -41,6 +54,45 @@ function App() {
     return logoUrl;
   };
 
+  // Define load functions before useEffect hooks
+  const loadSettings = useCallback(async () => {
+    try {
+      const response = await api.get("/settings");
+      setSettings(response.data);
+    } catch (error) {
+      console.error("Settings yüklenemedi:", error);
+    }
+  }, []);
+
+  const loadServices = useCallback(async () => {
+    try {
+      const response = await api.get("/services"); 
+      setServices(response.data);
+    } catch (error) {
+      toast.error("Hizmetler yüklenemedi");
+    }
+  }, []);
+
+  const loadAppointments = useCallback(async () => {
+    try {
+      const response = await api.get("/appointments"); 
+      setAppointments(response.data || []);
+      console.log("✅ Randevular yüklendi:", response.data?.length || 0, "randevu");
+    } catch (error) {
+      console.error("❌ Randevular yüklenemedi:", error);
+      toast.error("Randevular yüklenemedi");
+    }
+  }, []);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const response = await api.get("/stats/dashboard"); 
+      setStats(response.data);
+    } catch (error) {
+      console.error("İstatistikler yüklenemedi:", error);
+    }
+  }, []);
+
   useEffect(() => {
     loadServices();
     loadAppointments();
@@ -48,7 +100,7 @@ function App() {
     if (userRole === 'admin') {
       loadStats();
     }
-  }, [userRole]); 
+  }, [userRole, loadServices, loadAppointments, loadSettings, loadStats]); 
 
   useEffect(() => {
     let touchStartY = 0;
@@ -107,83 +159,126 @@ function App() {
         document.removeEventListener('touchmove', handleTouchMove);
         document.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [userRole]); 
+  }, [userRole, loadAppointments, loadStats, loadServices]); 
 
   // WebSocket setup for real-time updates
+  const socketRef = useRef(null);
+  const listenersInitializedRef = useRef(false);
+  const userRoleRef = useRef(userRole);
+  const loadAppointmentsRef = useRef(loadAppointments);
+  const loadStatsRef = useRef(loadStats);
+  
+  // Keep refs in sync with current functions
   useEffect(() => {
-    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
-    const socketUrl = BACKEND_URL || window.location.origin;
-    
-    // Initialize Socket.IO connection
-    const socket = io(socketUrl, {
-      path: '/api/socket.io/',
-      transports: ['websocket', 'polling'],
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5
-    });
-    
-    socket.on('connect', () => {
-      console.log('WebSocket connected:', socket.id);
+    userRoleRef.current = userRole;
+    loadAppointmentsRef.current = loadAppointments;
+    loadStatsRef.current = loadStats;
+  }, [userRole, loadAppointments, loadStats]);
+  
+  // Initialize socket only once on mount
+  useEffect(() => {
+    if (!socketRef.current) {
+      const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+      const socketUrl = BACKEND_URL || window.location.origin;
       
-      // Get organization_id from token
-      const token = localStorage.getItem('authToken');
-      if (token) {
+      // Initialize Socket.IO connection
+      const socket = io(socketUrl, {
+        path: '/api/socket.io',
+        transports: ['websocket', 'polling'],
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: 5,
+        autoConnect: true
+      });
+      
+      socketRef.current = socket;
+      
+      const handleConnect = () => {
+        // Get organization_id from token
+        const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+        if (authToken) {
+          try {
+            const payload = JSON.parse(atob(authToken.split('.')[1]));
+            const organizationId = payload.org_id;
+            if (organizationId) {
+              socket.emit('join_organization', { organization_id: organizationId });
+            }
+          } catch (error) {
+            // Token parse error - silent
+          }
+        }
+      };
+      
+      // Set up event listeners immediately
+      socket.on('connect', handleConnect);
+      
+      // If socket is already connected, join immediately
+      if (socket.connected) {
+        handleConnect();
+      }
+      
+      socket.on('disconnect', () => {});
+      socket.on('connect_error', () => {});
+      socket.on('connection_established', () => {});
+      socket.on('joined_organization', () => {});
+      
+      // Real-time appointment events - use refs to get current function values
+      socket.on('appointment_created', (data) => {
+        console.log("🔔 WebSocket: appointment_created event received", data);
+        if (loadAppointmentsRef.current) {
+          console.log("🔄 Loading appointments...");
+          loadAppointmentsRef.current();
+        }
+        if (userRoleRef.current === 'admin' && loadStatsRef.current) {
+          loadStatsRef.current();
+        }
+      });
+      
+      socket.on('appointment_updated', () => {
+        if (loadAppointmentsRef.current) {
+          loadAppointmentsRef.current();
+        }
+        if (userRoleRef.current === 'admin' && loadStatsRef.current) {
+          loadStatsRef.current();
+        }
+      });
+      
+      socket.on('appointment_deleted', () => {
+        if (loadAppointmentsRef.current) {
+          loadAppointmentsRef.current();
+        }
+        if (userRoleRef.current === 'admin' && loadStatsRef.current) {
+          loadStatsRef.current();
+        }
+      });
+      
+      listenersInitializedRef.current = true;
+    }
+    
+    // No cleanup - socket persists for component lifetime
+  }, []); // Empty dependency array - only run once on mount
+  
+  // Re-join organization when token changes
+  useEffect(() => {
+    if (socketRef.current && socketRef.current.connected && token) {
         try {
           const payload = JSON.parse(atob(token.split('.')[1]));
           const organizationId = payload.org_id;
-          
           if (organizationId) {
-            socket.emit('join_organization', { organization_id: organizationId });
+            socketRef.current.emit('join_organization', { organization_id: organizationId });
           }
         } catch (error) {
-          console.error('Error parsing token:', error);
-        }
+        // Token parse error - silent
       }
-    });
-    
-    socket.on('disconnect', () => {
-      console.log('WebSocket disconnected');
-    });
-    
-    socket.on('connection_established', (data) => {
-      console.log('Connection established:', data);
-    });
-    
-    socket.on('joined_organization', (data) => {
-      console.log('Joined organization:', data);
-    });
-    
-    // Real-time appointment events
-    socket.on('appointment_created', () => {
-      console.log('Appointment created - reloading data');
-      loadAppointments();
-      if (userRole === 'admin') {
-        loadStats();
-      }
-    });
-    
-    socket.on('appointment_updated', () => {
-      console.log('Appointment updated - reloading data');
-      loadAppointments();
-      if (userRole === 'admin') {
-        loadStats();
-      }
-    });
-    
-    socket.on('appointment_deleted', () => {
-      console.log('Appointment deleted - reloading data');
-      loadAppointments();
-      if (userRole === 'admin') {
-        loadStats();
-      }
-    });
-    
-    // Fallback: visibility and focus events for when user returns to tab
+    }
+  }, [token]);
+  
+  // Fallback: visibility and focus events for when user returns to tab
+  useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && !isRefreshing) {
         loadAppointments();
-        if (userRole === 'admin') {
+        if (userRoleRef.current === 'admin') {
           loadStats();
         }
       }
@@ -192,7 +287,7 @@ function App() {
     const handleFocus = () => {
       if (!isRefreshing) {
         loadAppointments();
-        if (userRole === 'admin') {
+        if (userRoleRef.current === 'admin') {
           loadStats();
         }
       }
@@ -202,55 +297,60 @@ function App() {
     window.addEventListener('focus', handleFocus);
     
     return () => {
-      socket.disconnect();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [isRefreshing, userRole]); 
+  }, [loadAppointments, loadStats, isRefreshing]);
+  
+  // DON'T cleanup socket - let it persist for the entire app lifetime
+  // Socket will automatically cleanup when browser tab closes
+  // Cleanup was causing socket to disconnect unnecessarily
 
-  const loadSettings = async () => {
-    try {
-      const response = await api.get("/settings");
-      setSettings(response.data);
-    } catch (error) {
-      console.error("Settings yüklenemedi:", error);
-    }
-  };
+  // iOS Chrome için alt navigasyon barı sabitleme
+  useEffect(() => {
+    const isIOSChrome = /CriOS/i.test(navigator.userAgent);
+    if (!isIOSChrome || !bottomNavRef.current) return;
 
-  const loadServices = async () => {
-    try {
-      const response = await api.get("/services"); 
-      setServices(response.data);
-    } catch (error) {
-      toast.error("Hizmetler yüklenemedi");
-    }
-  };
+    const bottomNav = bottomNavRef.current;
+    
+    const handleScroll = () => {
+      // Alt navigasyon barını her zaman en altta tut
+      if (bottomNav) {
+        bottomNav.style.position = 'fixed';
+        bottomNav.style.bottom = '0';
+        bottomNav.style.left = '0';
+        bottomNav.style.right = '0';
+        bottomNav.style.transform = 'translateZ(0)';
+        bottomNav.style.webkitTransform = 'translateZ(0)';
+      }
+    };
 
-  const loadAppointments = async () => {
-    try {
-      const response = await api.get("/appointments"); 
-      setAppointments(response.data);
-    } catch (error) {
-      toast.error("Randevular yüklenemedi");
-    }
-  };
+    const handleResize = () => {
+      handleScroll();
+    };
 
-  const loadStats = async () => {
-    try {
-      const response = await api.get("/stats/dashboard"); 
-      setStats(response.data);
-    } catch (error) {
-      console.error("İstatistikler yüklenemedi:", error);
-    }
-  };
+    // İlk yüklemede ve scroll/resize event'lerinde çalıştır
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleResize, { passive: true });
+    window.addEventListener('orientationchange', handleResize, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, [currentView, showForm]);
 
   const handleAppointmentSaved = async () => {
+    console.log("🔄 handleAppointmentSaved called - refreshing appointments...");
     await loadAppointments();
     if (userRole === 'admin') {
       await loadStats();
     }
     setShowForm(false);
     setSelectedAppointment(null);
+    console.log("✅ Appointments refreshed, form closed");
   };
   const handleEditAppointment = (appointment) => {
     setSelectedAppointment(appointment);
@@ -261,19 +361,6 @@ function App() {
     setShowForm(true);
   };
 
-  // Personel için sadece dashboard ve logout
-  const menuItems = userRole === 'staff' ? [
-    { id: "dashboard", icon: Calendar, label: "Randevular" }
-  ] : [
-    { id: "dashboard", icon: Calendar, label: "Randevular" },
-    { id: "customers", icon: Users, label: "Müşteriler" },
-    { id: "services", icon: Briefcase, label: "Hizmetler" },
-    { id: "staff", icon: UserCog, label: "Personel Yönetimi" },
-    { id: "cash", icon: DollarSign, label: "Kasa" },
-    { id: "audit", icon: FileText, label: "Denetim Günlükleri" },
-    { id: "import", icon: Upload, label: "İçe Aktar" },
-    { id: "settings", icon: SettingsIcon, label: "Ayarlar" }
-  ];
 
   return (
     <div className="App min-h-screen bg-white dark:bg-gray-900 transition-colors">
@@ -294,138 +381,41 @@ function App() {
         </div>
       )}
 
-      <header className="bg-gradient-to-r from-sky-50 to-blue-50 border-b border-blue-100 dark:from-gray-800 dark:to-gray-900 dark:border-gray-700 sticky top-0 z-40 shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {/* Logo - Yüklenmişse göster, yoksa default icon */}
-              {settings?.logo_url ? (
-                <div className="w-12 h-12 md:w-14 md:h-14 flex-shrink-0 bg-white rounded-lg border-2 border-blue-200 p-1">
-                  <img 
-                    src={getLogoUrl(settings.logo_url)}
-                    alt={settings.company_name || 'Logo'}
-                    className="w-full h-full object-contain"
-                    onError={(e) => {
-                      console.error('Logo yüklenemedi:', settings.logo_url);
-                      e.target.style.display = 'none';
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="w-12 h-12 md:w-14 md:h-14 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <Calendar className="w-6 h-6 md:w-7 md:h-7 text-white" />
-                </div>
-              )}
-              
-              <div>
-                <h1 className="text-xl font-bold text-blue-900 dark:text-blue-100" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-                  {settings?.company_name || 'Royal Koltuk Yıkama'}
+      {/* TopBar - Üst Navigasyon Barı */}
+      {!showForm && (
+        <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm" style={{ fontFamily: 'Inter, sans-serif' }}>
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              {/* Sol Bölüm: PLANN Logosu */}
+              <div className="flex-shrink-0">
+                <h1 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  PLANN
                 </h1>
-                <p className="text-xs text-blue-600 dark:text-blue-300">Randevu Yönetim Sistemi</p>
+              </div>
+
+              {/* Orta Bölüm: İşletme Adı */}
+              <div className="flex-1 flex justify-center px-4 min-w-0">
+                <h2 className="text-lg font-semibold text-gray-800 truncate max-w-full text-center">
+                  {settings?.company_name || "İşletme Adı"}
+                </h2>
+              </div>
+
+              {/* Sağ Bölüm: Bildirim Zili */}
+              <div className="flex-shrink-0">
+                <button
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
+                >
+                  <Bell className="w-6 h-6 text-gray-700" />
+                  {/* Bildirim badge'i varsa */}
+                  {/* <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span> */}
+                </button>
               </div>
             </div>
-
-            <button
-              data-testid="mobile-menu-button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 hover:bg-blue-100 rounded-lg transition-colors"
-            >
-              <Menu className="w-6 h-6 text-blue-900" />
-            </button>
-
-            <nav className="hidden md:flex gap-2 items-center">
-              {menuItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.id}
-                    data-testid={`nav-${item.id}`}
-                    onClick={() => {
-                      setCurrentView(item.id);
-                      setShowForm(false);
-                    }}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                      currentView === item.id
-                        ? "bg-blue-500 text-white shadow-md"
-                        : "text-blue-700 hover:bg-blue-100"
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="text-sm font-medium">{item.label}</span>
-                  </button>
-                );
-              })}
-              <button
-                onClick={logout}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-red-600 hover:bg-red-100 dark:hover:bg-red-900"
-              >
-                <LogOut className="w-4 h-4" />
-                <span className="text-sm font-medium">Çıkış Yap</span>
-              </button>
-              {userRole === 'admin' && (
-                <button
-                  onClick={toggleTheme}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-blue-700 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-gray-700"
-                  title={theme === 'dark' ? 'Açık moda geç' : 'Koyu moda geç'}
-                >
-                  {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                </button>
-              )}
-            </nav>
           </div>
+        </header>
+      )}
 
-          {mobileMenuOpen && (
-            <nav className="md:hidden mt-4 flex flex-col gap-2 pb-2">
-              {menuItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.id}
-                    data-testid={`mobile-nav-${item.id}`}
-                    onClick={() => {
-                      setCurrentView(item.id);
-                      setShowForm(false);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                      currentView === item.id
-                        ? "bg-blue-500 text-white shadow-md"
-                        : "text-blue-700 hover:bg-blue-100"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-sm font-medium">{item.label}</span>
-                  </button>
-                );
-              })}
-              <button
-                onClick={() => {
-                  logout();
-                  setMobileMenuOpen(false);
-                }}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-red-600 hover:bg-red-100 dark:hover:bg-red-900"
-              >
-                <LogOut className="w-5 h-5" />
-                <span className="text-sm font-medium">Çıkış Yap</span>
-              </button>
-              {userRole === 'admin' && (
-                <button
-                  onClick={() => {
-                    toggleTheme();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-blue-700 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-gray-700"
-                >
-                  {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                  <span className="text-sm font-medium">{theme === 'dark' ? 'Açık Mod' : 'Koyu Mod'}</span>
-                </button>
-              )}
-            </nav>
-          )}
-        </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-6">
+      <main className={(currentView === "dashboard" || currentView === "settings" || currentView === "settings-subscription" || currentView === "settings-profile" || currentView === "staff" || currentView === "services" || currentView === "help-center") && !showForm ? "" : "container mx-auto px-4 py-6"}>
         {currentView === "dashboard" && !showForm && (
           <Dashboard
             appointments={appointments}
@@ -433,6 +423,10 @@ function App() {
             userRole={userRole}
             onEditAppointment={handleEditAppointment}
             onNewAppointment={handleNewAppointment}
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
             onRefresh={async () => {
               await loadAppointments();
               if (userRole === 'admin') {
@@ -442,8 +436,8 @@ function App() {
           />
         )}
 
-        {currentView === "dashboard" && showForm && (
-          <AppointmentForm
+        {showForm && (
+          <AppointmentFormWizard
             services={services}
             appointment={selectedAppointment}
             onSave={handleAppointmentSaved}
@@ -454,9 +448,47 @@ function App() {
           />
         )}
 
-        {currentView === "customers" && userRole === 'admin' && ( <Customers /> )}
-        {currentView === "services" && userRole === 'admin' && ( <ServiceManagement services={services} onRefresh={loadServices} /> )}
-        {currentView === "staff" && userRole === 'admin' && ( <StaffManagement /> )}
+        {currentView === "calendar" && (
+          <CalendarView
+            onEditAppointment={(apt) => {
+              setSelectedAppointment(apt);
+              setShowForm(true);
+              setCurrentView("dashboard");
+            }}
+            onNewAppointment={handleNewAppointment}
+          />
+        )}
+        {currentView === "customers" && (
+          <Customers 
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
+            onNewAppointment={() => {
+              setCurrentView("dashboard");
+              setShowForm(true);
+              setSelectedAppointment(null);
+            }}
+          />
+        )}
+        {currentView === "services" && userRole === 'admin' && (
+          <ServiceManagement 
+            services={services} 
+            onRefresh={loadServices}
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
+          />
+        )}
+        {currentView === "staff" && userRole === 'admin' && (
+          <StaffManagement 
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
+          />
+        )}
         {currentView === "cash" && userRole === 'admin' && ( <CashRegister /> )}
         {currentView === "audit" && userRole === 'admin' && ( <AuditLogs /> )}
         {currentView === "import" && userRole === 'admin' && (
@@ -468,8 +500,132 @@ function App() {
             }}
           />
         )}
-        {currentView === "settings" && userRole === 'admin' && ( <Settings /> )}
+        {currentView === "settings" && (
+          <Settings 
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
+            userRole={userRole}
+            onLogout={logout}
+          />
+        )}
+        {currentView === "settings-subscription" && userRole === 'admin' && (
+          <SettingsSubscription 
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
+          />
+        )}
+        {currentView === "settings-profile" && (
+          <SettingsProfile 
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
+          />
+        )}
+        {currentView === "settings-finance" && userRole === 'admin' && (
+          <Finance 
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
+          />
+        )}
+        {currentView === "help-center" && (
+          <HelpCenter 
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
+          />
+        )}
       </main>
+
+      {/* Alt Navigasyon Barı (Dashboard ve Calendar görünümlerinde) */}
+      {(currentView === "dashboard" || currentView === "calendar") && !showForm && (
+        <div 
+          ref={bottomNavRef}
+          className="bg-white border-t border-gray-200 shadow-lg bottom-nav-fixed" 
+          style={{ 
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+            width: '100%',
+            maxWidth: '100vw',
+            WebkitTransform: 'translateZ(0)',
+            transform: 'translateZ(0)',
+            WebkitBackfaceVisibility: 'hidden',
+            backfaceVisibility: 'hidden',
+            WebkitTransition: 'none',
+            transition: 'none'
+          }}
+        >
+          <div className="flex items-center justify-around px-2 py-2">
+            {/* Anasayfa */}
+            <button
+              onClick={() => {
+                setCurrentView("dashboard");
+                setShowForm(false);
+              }}
+              className="flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors text-blue-600"
+            >
+              <Home className="w-5 h-5" />
+              <span className="text-xs font-medium">Anasayfa</span>
+            </button>
+
+            {/* Takvim */}
+            <button
+              onClick={() => {
+                setCurrentView("calendar");
+                setShowForm(false);
+              }}
+              className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors ${
+                currentView === "calendar" ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <Calendar className="w-5 h-5" />
+              <span className="text-xs font-medium">Takvim</span>
+            </button>
+
+            {/* Yeni Randevu Ekle (Ana Renk - Mavi) */}
+            <button
+              onClick={handleNewAppointment}
+              className="flex items-center justify-center w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition-colors -mt-4"
+            >
+              <Plus className="w-6 h-6" />
+            </button>
+
+            {/* Müşteriler */}
+            <button
+              onClick={() => {
+                setCurrentView("customers");
+                setShowForm(false);
+              }}
+              className="flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors text-gray-600 hover:text-gray-900"
+            >
+              <Users className="w-5 h-5" />
+              <span className="text-xs font-medium">Müşteriler</span>
+            </button>
+
+            {/* Ayarlar */}
+            <button
+              onClick={() => {
+                setCurrentView("settings");
+                setShowForm(false);
+              }}
+              className="flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors text-gray-600 hover:text-gray-900"
+            >
+              <SettingsIcon className="w-5 h-5" />
+              <span className="text-xs font-medium">Ayarlar</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
