@@ -1,0 +1,12 @@
+[Unit]
+Description=Royal Koltuk FastAPI Backend Servisi
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/var/www/royalpremiumcare_dev/backend
+ExecStart=/var/www/royalpremiumcare_dev/backend/venv/bin/uvicorn server:socket_app --host 127.0.0.1 --port 8002
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
