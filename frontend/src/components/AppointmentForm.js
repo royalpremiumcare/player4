@@ -347,7 +347,7 @@ const AppointmentForm = ({ services, appointment, onSave, onCancel }) => {
           {(isNewCustomer || appointment) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="customer_name">Müşteri Adı *</Label>
+                <Label htmlFor="customer_name">Müşteri Adı</Label>
                 <Input
                   id="customer_name"
                   data-testid="customer-name-input"

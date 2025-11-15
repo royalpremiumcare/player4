@@ -331,7 +331,7 @@ const AppointmentFormWizard = ({ services, appointment, onSave, onCancel }) => {
             <div className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="service" className="font-medium text-sm text-gray-700">
-                  Hizmet Seçin *
+                  Hizmet Seçin
                 </Label>
                 {userRole === 'staff' && filteredServices.length === 0 ? (
                   <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-gray-300">
@@ -397,7 +397,7 @@ const AppointmentFormWizard = ({ services, appointment, onSave, onCancel }) => {
               {/* Müşteri Arama */}
               <div className="space-y-2">
                 <Label className="font-medium text-sm text-gray-700">
-                  Müşteri Ara veya Yeni Ekle
+                  Mevcut Müşteri Ara
                 </Label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -447,7 +447,7 @@ const AppointmentFormWizard = ({ services, appointment, onSave, onCancel }) => {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="customer_name" className="font-medium text-sm text-gray-700">
-                    Müşteri Adı *
+                    Yeni Müşteri Adı
                   </Label>
                   <Input
                     id="customer_name"
@@ -461,7 +461,7 @@ const AppointmentFormWizard = ({ services, appointment, onSave, onCancel }) => {
 
                 <div className="space-y-2">
                   <Label htmlFor="phone" className="font-medium text-sm text-gray-700">
-                    Telefon Numarası *
+                    Telefon Numarası
                   </Label>
                   <Input
                     id="phone"
@@ -530,7 +530,7 @@ const AppointmentFormWizard = ({ services, appointment, onSave, onCancel }) => {
               {/* Müsait Saatler */}
               <div className="space-y-2">
                 <Label className="font-medium text-sm text-gray-700">
-                  Müsait Saatler *
+                  Müsait Saatler
                 </Label>
                 {allSlots.length === 0 && formData.service_id && formData.appointment_date ? (
                   <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-gray-300">
