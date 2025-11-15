@@ -73,6 +73,8 @@ def rate_limit(times: str = "10/minute", per_method: bool = True):
 LIMITS = {
     'login': "5/minute",
     'register': "3/hour",
+    'forgot_password': "3/hour",  # Şifre sıfırlama için
+    'reset_password': "3/hour",    # Şifre sıfırlama için
     'api': "100/minute",
     'stats': "20/minute",
     'sms': "100/hour",

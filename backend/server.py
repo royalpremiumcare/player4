@@ -64,6 +64,74 @@ ILETIMERKEZI_HASH = os.environ.get('ILETIMERKEZI_HASH')
 ILETIMERKEZI_SENDER = os.environ.get('ILETIMERKEZI_SENDER', 'FatihSenyuz') 
 SMS_ENABLED = os.environ.get('SMS_ENABLED', 'true').lower() in ('1', 'true', 'yes')
 
+# --- BREVO EMAIL AYARLARI ---
+BREVO_API_KEY = os.environ.get('BREVO_API_KEY')
+if BREVO_API_KEY:
+    try:
+        brevo_configuration = sib_api_v3_sdk.Configuration()
+        brevo_configuration.api_key['api-key'] = BREVO_API_KEY
+        brevo_api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(brevo_configuration))
+        logging.info("✅ Brevo API instance başarıyla oluşturuldu.")
+    except Exception as e:
+        logging.error(f"❌ Brevo API instance oluşturulamadı: {str(e)}")
+        brevo_api_instance = None
+else:
+    brevo_api_instance = None
+    logging.warning("⚠️ BREVO_API_KEY bulunamadı! E-posta gönderimi devre dışı.")
+
+async def send_email(to_email: str, subject: str, html_content: str, to_name: str = None, sender_name: str = "PLANN", sender_email: str = "noreply@dev.royalpremiumcare.com"):
+    """Brevo API ile e-posta gönder - Global helper fonksiyon (async)"""
+    global brevo_api_instance
+    try:
+        logging.info(f"📧 E-posta gönderme başlatılıyor: {to_email} - Subject: {subject}")
+        
+        # Runtime'da API key'i tekrar kontrol et
+        current_api_key = os.environ.get('BREVO_API_KEY')
+        logging.info(f"🔑 BREVO_API_KEY kontrol: {'Var' if current_api_key else 'YOK'} - Uzunluk: {len(current_api_key) if current_api_key else 0}")
+        
+        if not brevo_api_instance:
+            logging.warning("❌ Brevo API instance bulunamadı! E-posta gönderilemedi.")
+            # Runtime'da instance oluşturmayı dene
+            if current_api_key:
+                try:
+                    logging.info("🔄 Runtime'da Brevo API instance oluşturuluyor...")
+                    brevo_configuration = sib_api_v3_sdk.Configuration()
+                    brevo_configuration.api_key['api-key'] = current_api_key
+                    brevo_api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(brevo_configuration))
+                    logging.info("✅ Runtime'da Brevo API instance oluşturuldu!")
+                except Exception as e:
+                    logging.error(f"❌ Runtime'da Brevo API instance oluşturulamadı: {e}")
+                    return False
+            else:
+                return False
+        
+        sender = {"name": sender_name, "email": sender_email}
+        to = [{"email": to_email, "name": to_name or to_email}]
+        
+        send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+            to=to,
+            sender=sender,
+            subject=subject,
+            html_content=html_content
+        )
+        
+        # Async context'te sync API çağrısını thread pool'da çalıştır
+        import asyncio
+        logging.info(f"📤 Brevo API'ye e-posta gönderiliyor...")
+        api_response = await asyncio.to_thread(brevo_api_instance.send_transac_email, send_smtp_email)
+        logging.info(f"✅ E-posta başarıyla gönderildi: {to_email} - Subject: {subject} - Message ID: {api_response.message_id}")
+        return True
+    except ApiException as e:
+        logging.error(f"❌ E-posta gönderilirken Brevo API hatası: {e.status} - {e.reason} - {e.body}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return False
+    except Exception as e:
+        logging.error(f"❌ E-posta gönderilirken beklenmedik hata: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return False
+
 # === SMS REMINDER SCHEDULER ===
 scheduler = AsyncIOScheduler()
 _app_instance = None  # Global app instance for scheduler
@@ -1053,85 +1121,59 @@ async def register_user(request: Request, user_in: UserCreate, db = Depends(get_
     
     # Brevo ile hoş geldin e-postası gönder
     try:
-        brevo_api_key = os.environ.get('BREVO_API_KEY')
-        if brevo_api_key:
-            # Brevo API yapılandırması
-            configuration = sib_api_v3_sdk.Configuration()
-            configuration.api_key['api-key'] = brevo_api_key
-            
-            # API instance oluştur
-            api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
-            
-            # Gönderici bilgileri
-            sender = {"name": "PLANN", "email": "noreply@dev.royalpremiumcare.com"}
-            
-            # Alıcı bilgileri (yeni kayıt olan kullanıcı)
-            to = [{"email": user_in.username, "name": user_in.full_name or user_in.username}]
-            
-            # E-posta içeriği - Profesyonel şablon
-            subject = "PLANN'a Hoş Geldiniz! Ücretsiz Deneme Sürümünüz Başladı."
-            logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
-            dashboard_url = "https://dev.royalpremiumcare.com"
-            user_name = user_in.full_name or user_in.username
-            html_content = f"""
-            <html>
-            <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6;">
-                <table width="100%" border="0" cellpadding="0" cellspacing="0">
-                    <tr>
-                        <td align="center" style="padding: 20px 0;">
-                            <table width="600" border="0" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-                                <tr>
-                                    <td align="center" style="padding: 30px 0; background-color: #f9f9f9; border-bottom: 1px solid #e0e0e0; border-top-left-radius: 8px; border-top-right-radius: 8px;">
-                                        <img src="{logo_url}" alt="PLANN Logosu" style="max-width: 150px; height: auto;">
-                                    </td>
-                                </tr>
-                                <tr style="background-color: #ffffff;">
-                                    <td style="padding: 40px 30px; color: #333333; font-size: 16px;">
-                                        <h1 style="font-size: 24px; color: #111111; margin-top: 0; text-align: center;">PLANN Randevu Sistemine Hoş Geldiniz!</h1>
-                                        <p>Merhaba {user_name},</p>
-                                        <p>İşletmenizi PLANN ile dijital dünyaya taşımaya karar verdiğiniz için teşekkür ederiz.</p>
-                                        <p>Randevu yönetiminizi kolaylaştırmak için tasarlanan tüm özelliklerimize erişim sağlayan <strong>7 günlük (veya 50 randevuluk)</strong> ücretsiz deneme sürümünüz başarıyla başlatıldı.</p>
-                                        <p style="text-align: center; margin-top: 30px; margin-bottom: 30px;">
-                                            Artık panonuza giderek ilk randevunuzu oluşturabilir ve sistemi keşfetmeye başlayabilirsiniz.
-                                        </p>
-                                    </td>
-                                </tr>
-                                <tr style="background-color: #ffffff;">
-                                    <td align="center" style="padding: 0 30px 40px 30px;">
-                                        <a href="{dashboard_url}" target="_blank" style="background-color: #007bff; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 5px; font-size: 18px; font-weight: bold; display: inline-block;">
-                                            Kullanmaya Başla
-                                        </a>
-                                    </td>
-                                </tr>
-                                <tr style="background-color: #f9f9f9;">
-                                    <td align="center" style="padding: 20px 30px; font-size: 12px; color: #888888; border-top: 1px solid #e0e0e0; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
-                                        <p>© 2025 PLANN. Tüm hakları saklıdır.</p>
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                </table>
-            </body>
-            </html>
-            """
-            
-            # E-posta nesnesini oluştur
-            send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
-                to=to,
-                sender=sender,
-                subject=subject,
-                html_content=html_content
-            )
-            
-            # E-postayı gönder
-            api_response = api_instance.send_transac_email(send_smtp_email)
-            logging.info(f"Hoş geldin e-postası gönderildi: {user_in.username}")
-        else:
-            logging.warning("BREVO_API_KEY environment variable tanımlı değil, e-posta gönderilmedi.")
-    except ApiException as e:
-        logging.error(f"Brevo e-posta gönderme hatası: {e}")
-        # E-posta gönderilemese bile kayıt başarılı olmalı, hata fırlatmıyoruz
+        logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
+        dashboard_url = "https://dev.royalpremiumcare.com"
+        user_name = user_in.full_name or user_in.username
+        subject = "PLANN'a Hoş Geldiniz! Ücretsiz Deneme Sürümünüz Başladı."
+        html_content = f"""
+        <html>
+        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6;">
+            <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td align="center" style="padding: 20px 0;">
+                        <table width="600" border="0" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                            <tr>
+                                <td align="center" style="padding: 30px 0; background-color: #f9f9f9; border-bottom: 1px solid #e0e0e0; border-top-left-radius: 8px; border-top-right-radius: 8px;">
+                                    <img src="{logo_url}" alt="PLANN Logosu" style="max-width: 150px; height: auto;">
+                                </td>
+                            </tr>
+                            <tr style="background-color: #ffffff;">
+                                <td style="padding: 40px 30px; color: #333333; font-size: 16px;">
+                                    <h1 style="font-size: 24px; color: #111111; margin-top: 0; text-align: center;">PLANN Randevu Sistemine Hoş Geldiniz!</h1>
+                                    <p>Merhaba {user_name},</p>
+                                    <p>İşletmenizi PLANN ile dijital dünyaya taşımaya karar verdiğiniz için teşekkür ederiz.</p>
+                                    <p>Randevu yönetiminizi kolaylaştırmak için tasarlanan tüm özelliklerimize erişim sağlayan <strong>7 günlük (veya 50 randevuluk)</strong> ücretsiz deneme sürümünüz başarıyla başlatıldı.</p>
+                                    <p style="text-align: center; margin-top: 30px; margin-bottom: 30px;">
+                                        Artık panonuza giderek ilk randevunuzu oluşturabilir ve sistemi keşfetmeye başlayabilirsiniz.
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr style="background-color: #ffffff;">
+                                <td align="center" style="padding: 0 30px 40px 30px;">
+                                    <a href="{dashboard_url}" target="_blank" style="background-color: #007bff; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 5px; font-size: 18px; font-weight: bold; display: inline-block;">
+                                        Kullanmaya Başla
+                                    </a>
+                                </td>
+                            </tr>
+                            <tr style="background-color: #f9f9f9;">
+                                <td align="center" style="padding: 20px 30px; font-size: 12px; color: #888888; border-top: 1px solid #e0e0e0; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
+                                    <p>© 2025 PLANN. Tüm hakları saklıdır.</p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        
+        await send_email(
+            to_email=user_in.username,
+            subject=subject,
+            html_content=html_content,
+            to_name=user_name
+        )
     except Exception as e:
         logging.error(f"E-posta gönderme sırasında beklenmedik hata: {e}")
         # E-posta gönderilemese bile kayıt başarılı olmalı
@@ -1169,27 +1211,8 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
 async def send_personnel_invitation_email(user_email: str, user_name: str, organization_name: str, invitation_link: str):
     """Personel davet e-postası gönderir."""
     try:
-        brevo_api_key = os.environ.get('BREVO_API_KEY')
-        if not brevo_api_key:
-            logging.warning("BREVO_API_KEY environment variable tanımlı değil, e-posta gönderilmedi.")
-            return False
-        
-        # Brevo API yapılandırması
-        configuration = sib_api_v3_sdk.Configuration()
-        configuration.api_key['api-key'] = brevo_api_key
-        api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
-        
-        # Gönderici ve alıcı
-        sender = {"name": "PLANN", "email": "noreply@dev.royalpremiumcare.com"}
-        to = [{"email": user_email, "name": user_name}]
-        
-        # Konu
-        subject = "PLANN Davetiyesi: Hesabınızı Oluşturun"
-        
-        # Logo URL
         logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
-        
-        # HTML içerik
+        subject = "PLANN Davetiyesi: Hesabınızı Oluşturun"
         html_content = f"""
         <html>
         <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6;">
@@ -1230,21 +1253,12 @@ async def send_personnel_invitation_email(user_email: str, user_name: str, organ
         </html>
         """
         
-        # E-posta nesnesini oluştur
-        send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
-            to=to,
-            sender=sender,
+        return await send_email(
+            to_email=user_email,
             subject=subject,
-            html_content=html_content
+            html_content=html_content,
+            to_name=user_name
         )
-        
-        # E-postayı gönder
-        api_response = api_instance.send_transac_email(send_smtp_email)
-        logging.info(f"Personel davet e-postası gönderildi: {user_email}")
-        return True
-    except ApiException as e:
-        logging.error(f"Brevo e-posta gönderme hatası: {e}")
-        return False
     except Exception as e:
         logging.error(f"E-posta gönderme sırasında beklenmedik hata: {e}")
         return False
@@ -1252,27 +1266,8 @@ async def send_personnel_invitation_email(user_email: str, user_name: str, organ
 async def send_password_reset_email(user_email: str, user_name: str, reset_link: str):
     """Kullanıcıya şifre sıfırlama linkini içeren kurumsal e-postayı gönderir."""
     try:
-        brevo_api_key = os.environ.get('BREVO_API_KEY')
-        if not brevo_api_key:
-            logging.warning("BREVO_API_KEY environment variable tanımlı değil, e-posta gönderilmedi.")
-            return False
-        
-        # Brevo API yapılandırması
-        configuration = sib_api_v3_sdk.Configuration()
-        configuration.api_key['api-key'] = brevo_api_key
-        api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
-        
-        # Gönderici ve alıcı
-        sender = {"name": "PLANN Destek", "email": "noreply@dev.royalpremiumcare.com"}
-        to = [{"email": user_email, "name": user_name}]
-        
-        # Konu
-        subject = "PLANN Şifre Sıfırlama Talebi"
-        
-        # Logo URL
         logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
-        
-        # HTML içerik
+        subject = "PLANN Şifre Sıfırlama Talebi"
         html_content = f"""
         <html>
         <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6;">
@@ -1320,27 +1315,19 @@ async def send_password_reset_email(user_email: str, user_name: str, reset_link:
         </html>
         """
         
-        # E-posta nesnesini oluştur
-        send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
-            to=to,
-            sender=sender,
+        return await send_email(
+            to_email=user_email,
             subject=subject,
-            html_content=html_content
+            html_content=html_content,
+            to_name=user_name,
+            sender_name="PLANN Destek"
         )
-        
-        # E-postayı gönder
-        api_response = api_instance.send_transac_email(send_smtp_email)
-        logging.info(f"Şifre sıfırlama e-postası gönderildi: {user_email}")
-        return True
-    except ApiException as e:
-        logging.error(f"Brevo şifre sıfırlama e-postası gönderme hatası: {e}")
-        return False
     except Exception as e:
         logging.error(f"Şifre sıfırlama e-postası gönderme sırasında beklenmedik hata: {e}")
         return False
 
 @api_router.post("/forgot-password")
-@rate_limit(LIMITS['register'])
+@rate_limit("3/hour")
 async def forgot_password(request: Request, forgot_request: ForgotPasswordRequest, db = Depends(get_db)):
     """Kullanıcıya şifre sıfırlama e-postası gönderir."""
     try:
