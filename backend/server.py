@@ -4237,88 +4237,96 @@ async def create_public_appointment(request: Request, appointment: AppointmentCr
         assigned_staff_id = appointment.staff_member_id
     else:
         # Müşteri "Farketmez" seçti veya personel seçimi yok
-        # Admin'in de hizmet verip vermediğini kontrol et
+        # Önce customer_can_choose_staff ayarını kontrol et
         settings_data = await db.settings.find_one({"organization_id": organization_id})
-        admin_provides_service = settings_data.get('admin_provides_service', True) if settings_data else True
+        customer_can_choose_staff = settings_data.get('customer_can_choose_staff', False) if settings_data else False
         
-        # Bu hizmeti verebilen personelleri bul
-        qualified_staff_query = {
-            "organization_id": organization_id,
-            "permitted_service_ids": {"$in": [appointment.service_id]}
-        }
-        
-        # Admin hizmet vermiyorsa, admin'i listeden çıkar
-        if not admin_provides_service:
-            qualified_staff_query["role"] = {"$ne": "admin"}
-        
-        qualified_staff = await db.users.find(
-            qualified_staff_query,
-            {"_id": 0, "username": 1, "role": 1}
-        ).to_list(1000)
-        
-        if not qualified_staff:
-            raise HTTPException(
-                status_code=400,
-                detail="Bu hizmet için uygun personel bulunamadı"
-            )
-        
-        # Boş personel bul (duration'a göre çakışma kontrolü ile)
-        for staff in qualified_staff:
-            # Bu personelin o tarihteki tüm randevularını çek
-            existing_appointments = await db.appointments.find(
-                {
-                    "organization_id": organization_id,
-                    "staff_member_id": staff['username'],
-                    "appointment_date": appointment.appointment_date,
-                    "status": {"$ne": "İptal"}
-                },
-                {"_id": 0, "appointment_time": 1, "service_id": 1}
-            ).to_list(100)
+        # Eğer customer_can_choose_staff kapalıysa, personel atama yapma
+        if not customer_can_choose_staff:
+            logging.info(f"ℹ️ customer_can_choose_staff is disabled, skipping staff assignment")
+            assigned_staff_id = None
+        else:
+            # customer_can_choose_staff açıksa, otomatik atama yap
+            admin_provides_service = settings_data.get('admin_provides_service', True) if settings_data else True
             
-            # Çakışma kontrolü
-            has_conflict = False
-            for existing_appt in existing_appointments:
-                existing_start_time = existing_appt['appointment_time']
-                existing_service_id = existing_appt.get('service_id')
-                
-                # Mevcut randevunun hizmet süresini bul
-                if existing_service_id:
-                    existing_service = await db.services.find_one({"id": existing_service_id}, {"_id": 0, "duration": 1})
-                    existing_duration = existing_service.get('duration', 30) if existing_service else 30
-                else:
-                    existing_duration = 30
-                
-                # Mevcut randevunun bitiş saatini hesapla
-                existing_start_hour, existing_start_minute = map(int, existing_start_time.split(':'))
-                existing_end_minute = existing_start_minute + existing_duration
-                existing_end_hour = existing_start_hour + (existing_end_minute // 60)
-                existing_end_minute = existing_end_minute % 60
-                existing_end_time = f"{str(existing_end_hour).zfill(2)}:{str(existing_end_minute).zfill(2)}"
+            # Bu hizmeti verebilen personelleri bul
+            qualified_staff_query = {
+                "organization_id": organization_id,
+                "permitted_service_ids": {"$in": [appointment.service_id]}
+            }
+            
+            # Admin hizmet vermiyorsa, admin'i listeden çıkar
+            if not admin_provides_service:
+                qualified_staff_query["role"] = {"$ne": "admin"}
+            
+            qualified_staff = await db.users.find(
+                qualified_staff_query,
+                {"_id": 0, "username": 1, "role": 1}
+            ).to_list(1000)
+            
+            if not qualified_staff:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Bu hizmet için uygun personel bulunamadı"
+                )
+            
+            # Boş personel bul (duration'a göre çakışma kontrolü ile)
+            for staff in qualified_staff:
+                # Bu personelin o tarihteki tüm randevularını çek
+                existing_appointments = await db.appointments.find(
+                    {
+                        "organization_id": organization_id,
+                        "staff_member_id": staff['username'],
+                        "appointment_date": appointment.appointment_date,
+                        "status": {"$ne": "İptal"}
+                    },
+                    {"_id": 0, "appointment_time": 1, "service_id": 1}
+                ).to_list(100)
                 
                 # Çakışma kontrolü
-                if (appointment.appointment_time < existing_end_time and new_end_time > existing_start_time):
-                    has_conflict = True
-                    logging.debug(f"   ⚠️ Public: Staff {staff['username']} has conflict: {appointment.appointment_time}-{new_end_time} overlaps with {existing_start_time}-{existing_end_time}")
+                has_conflict = False
+                for existing_appt in existing_appointments:
+                    existing_start_time = existing_appt['appointment_time']
+                    existing_service_id = existing_appt.get('service_id')
+                    
+                    # Mevcut randevunun hizmet süresini bul
+                    if existing_service_id:
+                        existing_service = await db.services.find_one({"id": existing_service_id}, {"_id": 0, "duration": 1})
+                        existing_duration = existing_service.get('duration', 30) if existing_service else 30
+                    else:
+                        existing_duration = 30
+                    
+                    # Mevcut randevunun bitiş saatini hesapla
+                    existing_start_hour, existing_start_minute = map(int, existing_start_time.split(':'))
+                    existing_end_minute = existing_start_minute + existing_duration
+                    existing_end_hour = existing_start_hour + (existing_end_minute // 60)
+                    existing_end_minute = existing_end_minute % 60
+                    existing_end_time = f"{str(existing_end_hour).zfill(2)}:{str(existing_end_minute).zfill(2)}"
+                    
+                    # Çakışma kontrolü
+                    if (appointment.appointment_time < existing_end_time and new_end_time > existing_start_time):
+                        has_conflict = True
+                        logging.debug(f"   ⚠️ Public: Staff {staff['username']} has conflict: {appointment.appointment_time}-{new_end_time} overlaps with {existing_start_time}-{existing_end_time}")
+                        break
+                
+                if not has_conflict:
+                    # Bu personel boş!
+                    assigned_staff_id = staff['username']
+                    logging.info(f"✅ Public booking auto-assigned to {staff['username']} for {appointment.appointment_time}")
                     break
             
-            if not has_conflict:
-                # Bu personel boş!
-                assigned_staff_id = staff['username']
-                logging.info(f"✅ Public booking auto-assigned to {staff['username']} for {appointment.appointment_time}")
-                break
-        
-        if not assigned_staff_id:
-            # Kota artırıldı ama personel bulunamadı, geri al
-            plan_doc = await db.organization_plans.find_one({"organization_id": organization_id})
-            if plan_doc:
-                await db.organization_plans.update_one(
-                    {"organization_id": organization_id},
-                    {"$inc": {"quota_usage": -1}}
+            if not assigned_staff_id:
+                # Kota artırıldı ama personel bulunamadı, geri al
+                plan_doc = await db.organization_plans.find_one({"organization_id": organization_id})
+                if plan_doc:
+                    await db.organization_plans.update_one(
+                        {"organization_id": organization_id},
+                        {"$inc": {"quota_usage": -1}}
+                    )
+                raise HTTPException(
+                    status_code=400,
+                    detail="Bu saat dilimi doludur. Lütfen başka bir saat seçin."
                 )
-            raise HTTPException(
-                status_code=400,
-                detail="Bu saat dilimi doludur. Lütfen başka bir saat seçin."
-            )
     
     # Randevuyu oluştur
     appointment_data = appointment.model_dump()
