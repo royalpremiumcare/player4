@@ -173,6 +173,7 @@ function App() {
     if (!socketRef.current) {
       const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
       const socketUrl = BACKEND_URL || window.location.origin;
+      const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
       
       // Initialize Socket.IO connection
       const socket = io(socketUrl, {
