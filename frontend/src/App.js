@@ -48,13 +48,28 @@ function App() {
   const [pullDistance, setPullDistance] = useState(0);
   const [settings, setSettings] = useState(null);
 
-  // URL routing - path'den view'ı oku
+  // URL routing - path'den view'ı oku ve URL değişikliklerini dinle
   useEffect(() => {
-    const path = window.location.pathname;
-    if (path === '/superadmin' && userRole === 'superadmin') {
-      setCurrentView('superadmin');
-      setShowForm(false);
-    }
+    const handleRouteChange = () => {
+      const path = window.location.pathname;
+      console.log('🔍 URL Changed:', { path, userRole });
+      
+      if (path === '/superadmin' && userRole === 'superadmin') {
+        console.log('✅ Setting view to superadmin');
+        setCurrentView('superadmin');
+        setShowForm(false);
+      }
+    };
+
+    // İlk yükleme
+    handleRouteChange();
+
+    // URL değişikliklerini dinle (browser back/forward buttons)
+    window.addEventListener('popstate', handleRouteChange);
+    
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+    };
   }, [userRole]);
 
   // Define load functions before useEffect hooks
@@ -407,8 +422,21 @@ function App() {
                 </h2>
               </div>
 
-              {/* Sağ Bölüm: Bildirim Zili */}
-              <div className="flex-shrink-0">
+              {/* Sağ Bölüm: SuperAdmin + Bildirim Zili */}
+              <div className="flex-shrink-0 flex items-center gap-2">
+                {userRole === 'superadmin' && (
+                  <button
+                    onClick={() => {
+                      setCurrentView('superadmin');
+                      setShowForm(false);
+                      window.history.pushState({}, '', '/superadmin');
+                    }}
+                    className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+                    title="SuperAdmin Panel"
+                  >
+                    <UserCog className="w-6 h-6 text-blue-600" />
+                  </button>
+                )}
                 <button
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
                 >
