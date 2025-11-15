@@ -21,6 +21,7 @@ import ImportData from "@/components/ImportData";
 import StaffManagement from "@/components/StaffManagement";
 import AuditLogs from "@/components/AuditLogs";
 import HelpCenter from "@/components/HelpCenter";
+import SuperAdmin from "@/components/SuperAdmin";
 import { Calendar, Briefcase, DollarSign, SettingsIcon, Users, Upload, LogOut, Moon, Sun, RefreshCw, UserCog, FileText, Home, Plus, CreditCard, User, HelpCircle, Package, Bell } from "lucide-react";
 import { useTheme } from "./context/ThemeContext";
 import {
@@ -533,6 +534,14 @@ function App() {
         )}
         {currentView === "help-center" && (
           <HelpCenter 
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
+          />
+        )}
+        {currentView === "superadmin" && userRole === 'superadmin' && (
+          <SuperAdmin 
             onNavigate={(view) => {
               setCurrentView(view);
               setShowForm(false);
