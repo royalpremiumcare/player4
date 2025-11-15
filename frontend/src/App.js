@@ -48,6 +48,15 @@ function App() {
   const [pullDistance, setPullDistance] = useState(0);
   const [settings, setSettings] = useState(null);
 
+  // URL routing - path'den view'ı oku
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path === '/superadmin' && userRole === 'superadmin') {
+      setCurrentView('superadmin');
+      setShowForm(false);
+    }
+  }, [userRole]);
+
   // Define load functions before useEffect hooks
   const loadSettings = useCallback(async () => {
     try {
@@ -545,6 +554,10 @@ function App() {
             onNavigate={(view) => {
               setCurrentView(view);
               setShowForm(false);
+              // Dashboard'a dönünce URL'yi temizle
+              if (view === 'dashboard') {
+                window.history.pushState({}, '', '/');
+              }
             }}
           />
         )}
