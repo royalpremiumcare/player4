@@ -14,8 +14,31 @@ import logging
 logger = logging.getLogger(__name__)
 RATE_LIMIT_ENABLED = os.environ.get('RATE_LIMIT_ENABLED', 'true').lower() == 'true'
 
+# Nginx proxy arkasında doğru IP adresini almak için custom key_func
+def get_client_ip(request: Request) -> str:
+    """Nginx proxy arkasında gerçek client IP'sini al"""
+    # Önce X-Forwarded-For header'ını kontrol et
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # X-Forwarded-For: client, proxy1, proxy2 formatında olabilir
+        # İlk IP'yi al (gerçek client IP'si)
+        client_ip = forwarded_for.split(",")[0].strip()
+        logger.debug(f"Rate limit IP from X-Forwarded-For: {client_ip}")
+        return client_ip
+    
+    # X-Real-IP header'ını kontrol et
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        logger.debug(f"Rate limit IP from X-Real-IP: {real_ip}")
+        return real_ip
+    
+    # Fallback: get_remote_address kullan
+    ip = get_remote_address(request)
+    logger.debug(f"Rate limit IP from get_remote_address: {ip}")
+    return ip
+
 # Global, ama 'lifespan'de bağlanacak
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+limiter = Limiter(key_func=get_client_ip, default_limits=["100/minute"])
 
 def initialize_limiter(redis_client):
     """

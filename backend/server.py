@@ -83,7 +83,9 @@ async def send_email(to_email: str, subject: str, html_content: str, to_name: st
     """Brevo API ile e-posta gönder - Global helper fonksiyon (async)"""
     global brevo_api_instance
     try:
-        logging.info(f"📧 E-posta gönderme başlatılıyor: {to_email} - Subject: {subject}")
+        logging.info(f"📧 [SEND_EMAIL] E-posta gönderme başlatılıyor: {to_email} - Subject: {subject}")
+        logging.info(f"📧 [SEND_EMAIL] Sender: {sender_name} <{sender_email}>")
+        logging.info(f"📧 [SEND_EMAIL] To: {to_name or to_email}")
         
         # Runtime'da API key'i tekrar kontrol et
         current_api_key = os.environ.get('BREVO_API_KEY')
@@ -583,10 +585,21 @@ async def get_user_from_db(request: Request, username: str, db=None):
     if db is None:
         await ensure_db_connection(request); db = getattr(request.app, 'db', None)
         if db is None: raise HTTPException(status_code=503, detail="Database connection failed.")
+    
+    # Önce tam eşleşme dene
     user = await db.users.find_one({"username": username}, {"_id": 0})
     if user:
         try: return UserInDB(**user)
         except Exception as e: logging.warning(f"Kullanıcı veritabanında, ancak UserInDB modeline uymuyor: {e}"); return None
+    
+    # Tam eşleşme yoksa, case-insensitive arama yap (email için)
+    if "@" in username:  # Email adresi gibi görünüyorsa
+        import re
+        user = await db.users.find_one({"username": {"$regex": f"^{re.escape(username)}$", "$options": "i"}}, {"_id": 0})
+        if user:
+            try: return UserInDB(**user)
+            except Exception as e: logging.warning(f"Kullanıcı veritabanında (case-insensitive), ancak UserInDB modeline uymuyor: {e}"); return None
+    
     return None
 async def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db = Depends(get_db)):
     credentials_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"})
@@ -1275,6 +1288,13 @@ async def send_personnel_invitation_email(user_email: str, user_name: str, organ
 async def send_password_reset_email(user_email: str, user_name: str, reset_link: str):
     """Kullanıcıya şifre sıfırlama linkini içeren kurumsal e-postayı gönderir."""
     try:
+        # user_name kontrolü
+        if not user_name or user_name.strip() == "":
+            user_name = user_email.split("@")[0]  # Email'den isim çıkar
+            logging.warning(f"⚠️ [SEND_PASSWORD_RESET_EMAIL] user_name boş, email'den çıkarıldı: {user_name}")
+        
+        logging.info(f"📧 [SEND_PASSWORD_RESET_EMAIL] user_email: {user_email}, user_name: {user_name}, reset_link: {reset_link[:50]}...")
+        
         logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
         subject = "PLANN Şifre Sıfırlama Talebi"
         html_content = f"""
@@ -1324,15 +1344,27 @@ async def send_password_reset_email(user_email: str, user_name: str, reset_link:
         </html>
         """
         
-        return await send_email(
+        # HTML içeriğinin uzunluğunu kontrol et
+        html_length = len(html_content)
+        logging.info(f"📧 [SEND_PASSWORD_RESET_EMAIL] HTML içerik uzunluğu: {html_length} karakter")
+        
+        if html_length < 100:
+            logging.error(f"❌ [SEND_PASSWORD_RESET_EMAIL] HTML içerik çok kısa! ({html_length} karakter)")
+            logging.error(f"❌ [SEND_PASSWORD_RESET_EMAIL] HTML içerik: {html_content[:200]}")
+            return False
+        
+        result = await send_email(
             to_email=user_email,
             subject=subject,
             html_content=html_content,
             to_name=user_name,
             sender_name="PLANN Destek"
         )
+        
+        logging.info(f"📧 [SEND_PASSWORD_RESET_EMAIL] Email gönderim sonucu: {result}")
+        return result
     except Exception as e:
-        logging.error(f"Şifre sıfırlama e-postası gönderme sırasında beklenmedik hata: {e}")
+        logging.error(f"❌ [SEND_PASSWORD_RESET_EMAIL] E-posta gönderme sırasında beklenmedik hata: {e}", exc_info=True)
         return False
 
 @api_router.post("/forgot-password")
@@ -1340,11 +1372,15 @@ async def send_password_reset_email(user_email: str, user_name: str, reset_link:
 async def forgot_password(request: Request, forgot_request: ForgotPasswordRequest, db = Depends(get_db)):
     """Kullanıcıya şifre sıfırlama e-postası gönderir."""
     try:
+        logging.info(f"🔐 [FORGOT_PASSWORD] Request alındı: {forgot_request.username}")
         # Kullanıcıyı bul
         user = await get_user_from_db(request, forgot_request.username, db=db)
         if not user:
             # Güvenlik nedeniyle kullanıcı yoksa da başarılı mesajı döndür
+            logging.warning(f"⚠️ [FORGOT_PASSWORD] Kullanıcı bulunamadı: {forgot_request.username}")
             return {"message": "Eğer bu e-posta adresi kayıtlıysa, şifre sıfırlama linki gönderildi."}
+        
+        logging.info(f"✅ [FORGOT_PASSWORD] Kullanıcı bulundu: {user.username}")
         
         # Benzersiz token oluştur
         reset_token = str(uuid.uuid4()) + str(uuid.uuid4()).replace('-', '')
@@ -1364,12 +1400,19 @@ async def forgot_password(request: Request, forgot_request: ForgotPasswordReques
         
         # E-posta gönder
         user_name = user.full_name or user.username
-        email_sent = await send_password_reset_email(user.username, user_name, reset_link)
+        logging.info(f"🔐 [FORGOT_PASSWORD] Token oluşturuldu, email gönderiliyor: {user.username}")
+        logging.info(f"🔐 [FORGOT_PASSWORD] Reset link: {reset_link}")
+        try:
+            email_sent = await send_password_reset_email(user.username, user_name, reset_link)
+            logging.info(f"🔐 [FORGOT_PASSWORD] send_password_reset_email çağrıldı, sonuç: {email_sent}")
+        except Exception as email_error:
+            logging.error(f"❌ [FORGOT_PASSWORD] Email gönderim hatası: {email_error}", exc_info=True)
+            email_sent = False
         
         if email_sent:
-            logging.info(f"Şifre sıfırlama token'ı oluşturuldu ve e-posta gönderildi: {user.username}")
+            logging.info(f"✅ [FORGOT_PASSWORD] Şifre sıfırlama token'ı oluşturuldu ve e-posta gönderildi: {user.username}")
         else:
-            logging.warning(f"Şifre sıfırlama token'ı oluşturuldu ancak e-posta gönderilemedi: {user.username}")
+            logging.error(f"❌ [FORGOT_PASSWORD] Şifre sıfırlama token'ı oluşturuldu ancak e-posta gönderilemedi: {user.username}")
         
         # Güvenlik nedeniyle her zaman başarılı mesajı döndür
         return {"message": "Eğer bu e-posta adresi kayıtlıysa, şifre sıfırlama linki gönderildi."}
@@ -3902,7 +3945,7 @@ async def get_availability(request: Request, organization_id: str, service_id: s
         selected_staff = staff_members[0]
         
         # Personelin days_off kontrolü
-        staff_days_off = selected_staff.get('days_off', ["sunday"])
+        staff_days_off = selected_staff.get('days_off') or []
         if day_name in staff_days_off:
             # Personel bu gün izinli, müsaitlik yok
             logging.info(f"Staff {staff_id} is off on {day_name}")
@@ -3934,7 +3977,7 @@ async def get_availability(request: Request, organization_id: str, service_id: s
         
         # Tüm personellerin bu gün izinli olup olmadığını kontrol et
         all_staff_off = all(
-            day_name in (staff.get('days_off', ["sunday"]) or ["sunday"])
+            day_name in (staff.get('days_off') or [])
             for staff in staff_members
         )
         if all_staff_off:
@@ -3948,15 +3991,21 @@ async def get_availability(request: Request, organization_id: str, service_id: s
     
     # business_hours'dan o günün saatlerini al
     day_hours = business_hours.get(day_name, {})
-    if not day_hours.get('is_open', True):
+    logging.info(f"🔍 Availability Check - Date: {date}, Day: {day_name}, day_hours: {day_hours}")
+    is_open_value = day_hours.get('is_open', True)
+    logging.info(f"🔍 is_open value: {is_open_value}, type: {type(is_open_value)}")
+    
+    if not is_open_value:
         # İşletme bu gün kapalı
-        logging.info(f"Business is closed on {day_name}")
+        logging.info(f"❌ Business is closed on {day_name}")
         return {
             "available_slots": [],
             "all_slots": [],
             "busy_slots": [],
             "message": "İşletme bu gün kapalı"
         }
+    
+    logging.info(f"✅ Business is open on {day_name}")
     
     # Açılış ve kapanış saatlerini parse et
     open_time_str = day_hours.get('open_time', '09:00')
