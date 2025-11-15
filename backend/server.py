@@ -4154,6 +4154,9 @@ async def create_public_appointment(request: Request, appointment: AppointmentCr
     """Model D: Public randevu oluştur - Akıllı personel atama"""
     db = await get_db_from_request(request)
     
+    # DEBUG: Frontend'ten gelen veriyi logla
+    logging.info(f"🔍 PUBLIC APPOINTMENT REQUEST - staff_member_id: {appointment.staff_member_id}, service_id: {appointment.service_id}")
+    
     # KOTA KONTROLÜ - Randevu oluşturmadan önce kontrol et
     quota_ok, quota_error = await check_quota_and_increment(db, organization_id)
     if not quota_ok:
