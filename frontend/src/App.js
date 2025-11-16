@@ -22,7 +22,7 @@ import StaffManagement from "@/components/StaffManagement";
 import AuditLogs from "@/components/AuditLogs";
 import HelpCenter from "@/components/HelpCenter";
 import SuperAdmin from "@/components/SuperAdmin";
-import { Calendar, Briefcase, DollarSign, SettingsIcon, Users, Upload, LogOut, Moon, Sun, RefreshCw, UserCog, FileText, Home, Plus, CreditCard, User, HelpCircle, Package, Bell } from "lucide-react";
+import { Calendar, Briefcase, DollarSign, SettingsIcon, Users, Upload, LogOut, Moon, Sun, UserCog, FileText, Home, Plus, CreditCard, User, HelpCircle, Package, Bell } from "lucide-react";
 import { useTheme } from "./context/ThemeContext";
 import {
   DropdownMenu,
@@ -44,8 +44,6 @@ function App() {
   const [stats, setStats] = useState(null);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pullDistance, setPullDistance] = useState(0);
   const [settings, setSettings] = useState(null);
 
   // URL routing - path'den view'ı oku ve URL değişikliklerini dinle
@@ -120,64 +118,6 @@ function App() {
     }
   }, [userRole, loadServices, loadAppointments, loadSettings, loadStats]); 
 
-  useEffect(() => {
-    let touchStartY = 0;
-    let touchCurrentY = 0;
-    let isPulling = false;
-    let currentPullDistance = 0;
-    const PULL_THRESHOLD = 80;
-
-    const handleTouchStart = (e) => {
-        if (window.scrollY === 0) {
-            touchStartY = e.touches[0].clientY;
-            isPulling = true;
-        }
-    };
-
-    const handleTouchMove = (e) => {
-        if (!isPulling || window.scrollY > 0) {
-            isPulling = false;
-            return;
-        }
-        touchCurrentY = e.touches[0].clientY;
-        const pullDistance = touchCurrentY - touchStartY;
-        currentPullDistance = pullDistance;
-        if (pullDistance > 0) {
-            setPullDistance(Math.min(pullDistance, PULL_THRESHOLD + 20));
-            if (pullDistance > 10) {
-                e.preventDefault();
-            }
-        } else {
-            setPullDistance(0);
-        }
-    };
-
-    const handleTouchEnd = () => {
-        if (currentPullDistance >= PULL_THRESHOLD && isPulling) {
-            setIsRefreshing(true);
-            Promise.all([
-                loadAppointments(),
-                userRole === 'admin' ? loadStats() : Promise.resolve(),
-                loadServices()
-            ]).finally(() => {
-                setIsRefreshing(false);
-                setPullDistance(0);
-            });
-        } else {
-            setPullDistance(0);
-        }
-        isPulling = false;
-        currentPullDistance = 0;
-    };
-    document.addEventListener('touchstart', handleTouchStart, { passive: false });
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd);
-    return () => {
-        document.removeEventListener('touchstart', handleTouchStart);
-        document.removeEventListener('touchmove', handleTouchMove);
-        document.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [userRole, loadAppointments, loadStats, loadServices]); 
 
   // WebSocket setup for real-time updates
   const socketRef = useRef(null);
@@ -298,7 +238,7 @@ function App() {
   // Fallback: visibility and focus events for when user returns to tab
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !isRefreshing) {
+      if (document.visibilityState === 'visible') {
         loadAppointments();
         if (userRoleRef.current === 'admin') {
           loadStats();
@@ -307,11 +247,9 @@ function App() {
     };
     
     const handleFocus = () => {
-      if (!isRefreshing) {
-        loadAppointments();
-        if (userRoleRef.current === 'admin') {
-          loadStats();
-        }
+      loadAppointments();
+      if (userRoleRef.current === 'admin') {
+        loadStats();
       }
     };
     
@@ -322,7 +260,7 @@ function App() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [loadAppointments, loadStats, isRefreshing]);
+  }, [loadAppointments, loadStats]);
   
   // DON'T cleanup socket - let it persist for the entire app lifetime
   // Socket will automatically cleanup when browser tab closes
@@ -388,20 +326,6 @@ function App() {
     <div className="App min-h-screen bg-white dark:bg-gray-900 transition-colors">
       <Toaster position="top-center" richColors />
 
-      {(pullDistance > 0 || isRefreshing) && (
-        <div
-          className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center bg-blue-500 text-white py-2 transition-all duration-300"
-          style={{
-            transform: pullDistance > 0 ? `translateY(${Math.min(pullDistance, 80)}px)` : 'translateY(0)',
-            opacity: pullDistance > 0 ? Math.min(pullDistance / 80, 1) : (isRefreshing ? 1 : 0)
-          }}
-        >
-          <RefreshCw className={`w-5 h-5 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-          <span className="text-sm font-medium">
-            {isRefreshing ? 'Yenileniyor...' : pullDistance >= 80 ? 'Bırakın...' : 'Yenilemek için çekin'}
-          </span>
-        </div>
-      )}
 
       {/* TopBar - Üst Navigasyon Barı */}
       {!showForm && (

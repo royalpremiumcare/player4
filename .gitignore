@@ -1,8 +1,7 @@
--e 
 # Environment files
 *.env
 *.env.*
--e 
-# Environment files
-*.env
-*.env.*
+
+# Capacitor native platforms
+frontend/android/
+frontend/ios/

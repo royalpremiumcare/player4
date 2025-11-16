@@ -1962,8 +1962,22 @@ async def create_appointment(request: Request, appointment: AppointmentCreate, c
             existing_end_minute = existing_end_minute % 60
             existing_end_time = f"{str(existing_end_hour).zfill(2)}:{str(existing_end_minute).zfill(2)}"
             
+            # Çakışma kontrolü: Zamanları sayısal değerlere çevir (dakika cinsinden)
+            def time_to_minutes(time_str):
+                """Zaman string'ini (HH:MM) dakika cinsinden sayıya çevir"""
+                try:
+                    hour, minute = map(int, time_str.split(':'))
+                    return hour * 60 + minute
+                except (ValueError, AttributeError):
+                    return 0
+            
+            new_start_min = time_to_minutes(appointment.appointment_time)
+            new_end_min = time_to_minutes(new_end_time)
+            existing_start_min = time_to_minutes(existing_start_time)
+            existing_end_min = time_to_minutes(existing_end_time)
+            
             # Çakışma kontrolü: (yeni_başlangıç < mevcut_bitiş) VE (yeni_bitiş > mevcut_başlangıç)
-            if (appointment.appointment_time < existing_end_time and new_end_time > existing_start_time):
+            if (new_start_min < existing_end_min and new_end_min > existing_start_min):
                 has_conflict = True
                 logging.info(f"⚠️ Conflict detected: New {appointment.appointment_time}-{new_end_time} overlaps with existing {existing_start_time}-{existing_end_time}")
                 break
@@ -1976,10 +1990,10 @@ async def create_appointment(request: Request, appointment: AppointmentCreate, c
                     {"organization_id": current_user.organization_id},
                     {"$inc": {"quota_usage": -1}}
                 )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Bu personelin {appointment.appointment_date} tarihinde {appointment.appointment_time} saatinde zaten bir randevusu var. Lütfen başka bir saat seçin."
-        )
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bu personelin {appointment.appointment_date} tarihinde {appointment.appointment_time} saatinde zaten bir randevusu var. Lütfen başka bir saat seçin."
+            )
         assigned_staff_id = appointment.staff_member_id
     else:
         # Otomatik atama: Bu hizmeti verebilen personellerden boş olanı bul
@@ -4336,42 +4350,73 @@ async def get_availability(request: Request, organization_id: str, service_id: s
                 appt_start = appt['start_time']
                 appt_end = appt['end_time']
                 
-                # Çakışma kontrolü
-                if (potential_start_time < appt_end and potential_end_time > appt_start):
+                # Çakışma kontrolü: Zamanları sayısal değerlere çevir (dakika cinsinden)
+                def time_to_minutes(time_str):
+                    """Zaman string'ini (HH:MM) dakika cinsinden sayıya çevir"""
+                    try:
+                        hour, minute = map(int, time_str.split(':'))
+                        return hour * 60 + minute
+                    except (ValueError, AttributeError):
+                        return 0
+                
+                potential_start_min = time_to_minutes(potential_start_time)
+                potential_end_min = time_to_minutes(potential_end_time)
+                appt_start_min = time_to_minutes(appt_start)
+                appt_end_min = time_to_minutes(appt_end)
+                
+                # Çakışma kontrolü: (yeni_başlangıç < mevcut_bitiş) VE (yeni_bitiş > mevcut_başlangıç)
+                if (potential_start_min < appt_end_min and potential_end_min > appt_start_min):
                     has_conflict = True
-                    logging.debug(f"   ⚠️ Conflict: Slot {potential_start_time}-{potential_end_time} overlaps with {appt_start}-{appt_end} (Staff: {staff_id})")
+                    logging.info(f"   ⚠️ Conflict: Slot {potential_start_time}-{potential_end_time} overlaps with {appt_start}-{appt_end} (Staff: {staff_id})")
                     break
             
             if has_conflict:
                 # Seçili personel için busy slot
                 busy_slots.append(potential_start_time)
                 continue
+            else:
+                # Seçili personel için müsait (çakışma yok)
+                final_available_slots.append(potential_start_time)
+                logging.debug(f"   ✅ Available slot: {potential_start_time}-{potential_end_time} (Staff: {staff_id})")
         else:
-            # Seçili personel için müsait
-            final_available_slots.append(potential_start_time)
-    else:
-        # Otomatik atama - Tüm personeller için kontrol et
-        # En az bir personel müsait olmalı
-        busy_staff_at_slot = []
-        for appt in appointments_with_end_time:
-            appt_start = appt['start_time']
-            appt_end = appt['end_time']
+            # Otomatik atama - Tüm personeller için kontrol et
+            # En az bir personel müsait olmalı
+            busy_staff_at_slot = []
             
-            # Bu personel bu slotta dolu mu?
-            if (potential_start_time < appt_end and potential_end_time > appt_start):
-                busy_staff_at_slot.append(appt['staff_member_id'])
-        
-        busy_staff_unique = list(set(busy_staff_at_slot))
-        
-        # Eğer tüm personeller doluysa busy slot
-        if len(busy_staff_unique) >= len(staff_members):
-            busy_slots.append(potential_start_time)
-            logging.debug(f"   🚫 All staff busy at {potential_start_time}-{potential_end_time}")
-        else:
-            # En az bir personel müsait - slot müsait
-            final_available_slots.append(potential_start_time)
-            available_count = len(staff_members) - len(busy_staff_unique)
-            logging.debug(f"   ✅ Available slot: {potential_start_time}-{potential_end_time} ({available_count}/{len(staff_members)} staff available)")
+            # Zamanları sayısal değerlere çevir (dakika cinsinden)
+            def time_to_minutes(time_str):
+                """Zaman string'ini (HH:MM) dakika cinsinden sayıya çevir"""
+                try:
+                    hour, minute = map(int, time_str.split(':'))
+                    return hour * 60 + minute
+                except (ValueError, AttributeError):
+                    return 0
+            
+            potential_start_min = time_to_minutes(potential_start_time)
+            potential_end_min = time_to_minutes(potential_end_time)
+            
+            for appt in appointments_with_end_time:
+                appt_start = appt['start_time']
+                appt_end = appt['end_time']
+                
+                appt_start_min = time_to_minutes(appt_start)
+                appt_end_min = time_to_minutes(appt_end)
+                
+                # Bu personel bu slotta dolu mu?
+                if (potential_start_min < appt_end_min and potential_end_min > appt_start_min):
+                    busy_staff_at_slot.append(appt['staff_member_id'])
+            
+            busy_staff_unique = list(set(busy_staff_at_slot))
+            
+            # Eğer tüm personeller doluysa busy slot
+            if len(busy_staff_unique) >= len(staff_members):
+                busy_slots.append(potential_start_time)
+                logging.debug(f"   🚫 All staff busy at {potential_start_time}-{potential_end_time}")
+            else:
+                # En az bir personel müsait - slot müsait
+                final_available_slots.append(potential_start_time)
+                available_count = len(staff_members) - len(busy_staff_unique)
+                logging.debug(f"   ✅ Available slot: {potential_start_time}-{potential_end_time} ({available_count}/{len(staff_members)} staff available)")
     
     logging.info(f"🔍 Service: {service_id}, Date: {date}, Duration: {service_duration}min")
     logging.info(f"👥 Qualified staff: {len(staff_members)} - {staff_ids}")

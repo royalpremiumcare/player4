@@ -9,7 +9,10 @@ import {
   ChevronRight,
   Grid3x3,
   List,
-  Filter
+  Filter,
+  Trash2,
+  Phone,
+  Mail
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "../api/api";
@@ -31,6 +34,23 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const Calendar = ({ onEditAppointment, onNewAppointment }) => {
   const { userRole, token } = useAuth();
@@ -42,6 +62,51 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
   const [loading, setLoading] = useState(false);
   const [currentStaffUsername, setCurrentStaffUsername] = useState(null);
   const socketRef = useRef(null);
+  const weekViewScrollRef = useRef(null);
+  const dayRefs = useRef({});
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [showAppointmentDialog, setShowAppointmentDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [settings, setSettings] = useState(null);
+  const [selectedDayAppointments, setSelectedDayAppointments] = useState([]);
+  const [showDayAppointmentsDialog, setShowDayAppointmentsDialog] = useState(false);
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Mobil kontrolü
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Haftalık görünümde bugünün gününe scroll yap
+  useEffect(() => {
+    if (viewMode === 'week' && isMobile) {
+      const today = new Date();
+      const todayKey = format(today, "yyyy-MM-dd");
+      
+      // Render tamamlanana kadar bekle
+      const timeoutId = setTimeout(() => {
+        const todayElement = dayRefs.current[todayKey];
+        
+        if (todayElement) {
+          // scrollIntoView kullan - daha güvenilir
+          todayElement.scrollIntoView({ 
+            behavior: 'auto',
+            block: 'nearest', 
+            inline: 'center' 
+          });
+        }
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [viewMode, currentDate, isMobile, appointments.length]);
 
   // Randevu bitiş saatini hesapla
   const calculateEndTime = (startTime, duration) => {
@@ -58,11 +123,26 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
   };
 
   useEffect(() => {
-    loadStaffMembers();
+    loadSettings();
     if (userRole === 'staff') {
       loadCurrentStaffUsername();
     }
   }, [userRole]);
+
+  useEffect(() => {
+    if (settings !== null) {
+      loadStaffMembers();
+    }
+  }, [settings, userRole]);
+
+  const loadSettings = async () => {
+    try {
+      const response = await api.get("/settings");
+      setSettings(response.data);
+    } catch (error) {
+      // Silent error
+    }
+  };
 
   const loadCurrentStaffUsername = async () => {
     try {
@@ -79,7 +159,16 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
     if (userRole !== 'admin') return;
     try {
       const response = await api.get("/users");
-      const staff = (response.data || []).filter(u => u.role === 'staff');
+      let staff = (response.data || []).filter(u => u.role === 'staff');
+      
+      // Admin'in "hizmet verir" ayarı açıksa admin'i de ekle
+      if (settings?.admin_provides_service !== false) {
+        const admin = (response.data || []).find(u => u.role === 'admin');
+        if (admin) {
+          staff = [...staff, admin];
+        }
+      }
+      
       setStaffMembers(staff);
     } catch (error) {
       // Silent error
@@ -97,8 +186,9 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
       } else if (viewMode === "week") {
         const weekStart = startOfWeek(currentDate, { locale: tr });
         const weekEnd = endOfWeek(currentDate, { locale: tr });
-        startDate = format(weekStart, "yyyy-MM-dd");
-        endDate = format(weekEnd, "yyyy-MM-dd");
+        // Hafta sınırlarını genişlet - önceki ve sonraki haftalardan birkaç gün daha ekle
+        startDate = format(subDays(weekStart, 7), "yyyy-MM-dd");
+        endDate = format(addDays(weekEnd, 7), "yyyy-MM-dd");
       } else if (viewMode === "month") {
         const monthStart = startOfMonth(currentDate);
         const monthEnd = endOfMonth(currentDate);
@@ -254,6 +344,38 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
     }
   };
 
+  const handleAppointmentClick = (apt) => {
+    setSelectedAppointment(apt);
+    setShowAppointmentDialog(true);
+  };
+
+  const handleDeleteAppointment = async () => {
+    if (!selectedAppointment) return;
+    
+    setDeleting(true);
+    try {
+      await api.delete(`/appointments/${selectedAppointment.id}`);
+      toast.success("Randevu başarıyla silindi");
+      setShowDeleteDialog(false);
+      setShowAppointmentDialog(false);
+      setSelectedAppointment(null);
+      loadAppointments();
+    } catch (error) {
+      console.error("Randevu silinemedi:", error);
+      toast.error("Randevu silinirken hata oluştu");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const canDeleteAppointment = (apt) => {
+    if (userRole === 'admin') return true;
+    if (userRole === 'staff' && currentStaffUsername) {
+      return apt.staff_member_id === currentStaffUsername;
+    }
+    return false;
+  };
+
   const handleDateChange = (direction) => {
     if (direction === "prev") {
       if (viewMode === "day") {
@@ -290,7 +412,7 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
     const hours = Array.from({ length: 24 }, (_, i) => i);
 
     return (
-      <div className="space-y-1 sm:space-y-2">
+      <div className="space-y-2 sm:space-y-2">
         {hours.map((hour) => {
           const hourAppointments = dayAppointments.filter(apt => {
             const timeStr = apt.appointment_time || apt.time;
@@ -303,37 +425,37 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
 
           return (
             <div key={hour} className="flex border-b border-gray-100">
-              <div className="w-12 sm:w-16 text-xs sm:text-sm text-gray-600 py-1 sm:py-2 px-1 sm:px-2 font-medium">
+              <div className="w-14 sm:w-16 text-sm sm:text-sm text-gray-600 py-2 sm:py-2 px-2 sm:px-2 font-medium">
                 {hour.toString().padStart(2, '0')}:00
               </div>
-              <div className="flex-1 py-1 sm:py-2 px-1 sm:px-2">
+              <div className="flex-1 py-2 sm:py-2 px-2 sm:px-2">
                 {hourAppointments.map((apt) => (
                   <Card
                     key={apt.id}
-                    className={`mb-1 sm:mb-2 p-2 sm:p-3 cursor-pointer hover:shadow-md transition-shadow ${
+                    className={`mb-2 sm:mb-2 p-3 sm:p-3 cursor-pointer hover:shadow-md transition-shadow ${
                       userRole === 'admin' ? getStaffColor(apt.staff_member_id) : 'bg-white border-gray-200'
                     }`}
-                    onClick={() => onEditAppointment && onEditAppointment(apt)}
+                    onClick={() => handleAppointmentClick(apt)}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1 sm:gap-2 mb-0.5 sm:mb-1">
-                          <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                        <div className="flex items-center gap-2 sm:gap-2 mb-2 sm:mb-1">
+                          <Clock className="w-4 h-4 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
                           <div>
-                            <span className="text-xs sm:text-sm font-semibold text-gray-900">{apt.appointment_time || apt.time || '--:--'}</span>
+                            <span className="text-sm sm:text-sm font-semibold text-gray-900">{apt.appointment_time || apt.time || '--:--'}</span>
                             {apt.service_duration && calculateEndTime(apt.appointment_time || apt.time, apt.service_duration) && (
-                              <span className="text-xs text-gray-500 ml-1">
+                              <span className="text-sm text-gray-500 ml-1">
                                 - {calculateEndTime(apt.appointment_time || apt.time, apt.service_duration)}
                               </span>
                             )}
                           </div>
                         </div>
-                        <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">{apt.customer_name}</p>
-                        <p className="text-xs text-gray-600 mt-0.5 truncate">{apt.service_name}</p>
+                        <p className="text-sm sm:text-sm font-semibold text-gray-900 mb-1 truncate">{apt.customer_name}</p>
+                        <p className="text-sm text-gray-600 mt-0.5 truncate">{apt.service_name}</p>
                         {userRole === 'admin' && apt.staff_member_id && (
-                          <div className="flex items-center gap-1 mt-1 sm:mt-2">
-                            <User className="w-3 h-3 text-gray-500 flex-shrink-0" />
-                            <span className="text-xs text-gray-600 truncate">{getStaffName(apt.staff_member_id)}</span>
+                          <div className="flex items-center gap-1 mt-2 sm:mt-2">
+                            <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                            <span className="text-sm text-gray-600 truncate">{getStaffName(apt.staff_member_id)}</span>
                           </div>
                         )}
                       </div>
@@ -356,7 +478,18 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
     const weekDays = eachDayOfInterval({ start: weekStart, end: endOfWeek(currentDate, { locale: tr }) });
 
     return (
-      <div className="grid grid-cols-7 gap-1 sm:gap-2">
+      // Mobilde yatay scroll, desktop'ta grid
+      <div 
+        ref={weekViewScrollRef}
+        className="flex sm:grid sm:grid-cols-7 gap-2 sm:gap-2 overflow-x-auto sm:overflow-x-visible pb-2 sm:pb-0 snap-x snap-mandatory sm:snap-none scrollbar-hide"
+        style={{ 
+          WebkitOverflowScrolling: 'touch',
+          ...(isMobile && {
+            width: '100%',
+            maxWidth: '100%'
+          })
+        }}
+      >
         {weekDays.map((day, index) => {
           const dayAppointments = appointments.filter(apt => {
             const dateStr = apt.appointment_date || apt.date;
@@ -370,42 +503,54 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
             }
           });
 
+          const dayKey = format(day, "yyyy-MM-dd");
+
           return (
-            <div key={index} className="border border-gray-200 rounded-lg bg-white min-h-[200px] sm:min-h-[400px]">
-              <div className={`p-1 sm:p-2 text-center border-b border-gray-200 ${
+            <div 
+              key={index}
+              ref={(el) => {
+                if (el) dayRefs.current[dayKey] = el;
+              }}
+              className="flex-shrink-0 w-[85vw] sm:w-auto border border-gray-200 rounded-lg bg-white min-h-[300px] sm:min-h-[400px] snap-start sm:snap-none"
+            >
+              {/* Header - Daha büyük padding mobilde */}
+              <div className={`p-3 sm:p-2 text-center border-b border-gray-200 ${
                 isToday(day) ? 'bg-blue-50 font-semibold' : 'bg-gray-50'
               }`}>
-                <div className="text-[10px] sm:text-xs text-gray-600">{format(day, "EEE", { locale: tr })}</div>
-                <div className={`text-sm sm:text-lg ${isToday(day) ? 'text-blue-600' : 'text-gray-900'}`}>
+                <div className="text-xs sm:text-xs text-gray-600 font-medium">{format(day, "EEE", { locale: tr })}</div>
+                <div className={`text-lg sm:text-lg font-bold mt-1 ${isToday(day) ? 'text-blue-600' : 'text-gray-900'}`}>
                   {format(day, "d")}
                 </div>
               </div>
-              <div className="p-1 sm:p-2 space-y-0.5 sm:space-y-1 overflow-y-auto max-h-[160px] sm:max-h-[350px]">
+              
+              {/* Randevular - Daha büyük kartlar mobilde */}
+              <div className="p-2 sm:p-2 space-y-2 sm:space-y-1 overflow-y-auto max-h-[250px] sm:max-h-[350px]">
                 {dayAppointments.map((apt) => (
                   <Card
                     key={apt.id}
-                    className={`p-1 sm:p-2 cursor-pointer hover:shadow-md transition-shadow text-[10px] sm:text-xs ${
+                    className={`p-3 sm:p-2 cursor-pointer hover:shadow-md transition-shadow text-sm sm:text-xs ${
                       userRole === 'admin' ? getStaffColor(apt.staff_member_id) : 'bg-white border-gray-200'
                     }`}
-                    onClick={() => onEditAppointment && onEditAppointment(apt)}
+                    onClick={() => handleAppointmentClick(apt)}
                   >
-                    <div className="flex items-center gap-0.5 sm:gap-1 mb-0.5 sm:mb-1">
-                      <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-500 flex-shrink-0" />
+                    {/* Randevu içeriği - daha büyük fontlar mobilde */}
+                    <div className="flex items-center gap-2 sm:gap-1 mb-2 sm:mb-1">
+                      <Clock className="w-4 h-4 sm:w-3 sm:h-3 text-gray-500 flex-shrink-0" />
                       <div>
-                        <span className="font-semibold truncate">{apt.appointment_time || apt.time || '--:--'}</span>
+                        <span className="font-semibold text-base sm:text-xs">{apt.appointment_time || apt.time || '--:--'}</span>
                         {apt.service_duration && calculateEndTime(apt.appointment_time || apt.time, apt.service_duration) && (
-                          <span className="text-[9px] sm:text-xs text-gray-500 ml-0.5 sm:ml-1">
+                          <span className="text-sm sm:text-xs text-gray-500 ml-1">
                             - {calculateEndTime(apt.appointment_time || apt.time, apt.service_duration)}
                           </span>
                         )}
                       </div>
                     </div>
-                    <p className="font-semibold text-gray-900 truncate">{apt.customer_name}</p>
-                    <p className="text-gray-600 truncate text-[9px] sm:text-xs">{apt.service_name}</p>
+                    <p className="font-semibold text-base sm:text-xs text-gray-900 mb-1 truncate">{apt.customer_name}</p>
+                    <p className="text-sm sm:text-xs text-gray-600 truncate">{apt.service_name}</p>
                     {userRole === 'admin' && apt.staff_member_id && (
-                      <div className="flex items-center gap-0.5 sm:gap-1 mt-0.5 sm:mt-1">
-                        <User className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-500 flex-shrink-0" />
-                        <span className="text-[9px] sm:text-xs truncate">{getStaffName(apt.staff_member_id)}</span>
+                      <div className="flex items-center gap-1 mt-2 sm:mt-1">
+                        <User className="w-4 h-4 sm:w-3 sm:h-3 text-gray-500 flex-shrink-0" />
+                        <span className="text-sm sm:text-xs truncate">{getStaffName(apt.staff_member_id)}</span>
                       </div>
                     )}
                   </Card>
@@ -418,6 +563,22 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
     );
   };
 
+  const handleDayClick = (day, dayAppointments) => {
+    if (dayAppointments.length === 0) return;
+    
+    // Mobilde: Tüm randevuları göster
+    if (isMobile) {
+      setSelectedDay(day);
+      setSelectedDayAppointments(dayAppointments);
+      setShowDayAppointmentsDialog(true);
+    } else {
+      // Desktop'ta: İlk randevuyu göster
+      if (dayAppointments.length > 0) {
+        handleAppointmentClick(dayAppointments[0]);
+      }
+    }
+  };
+
   const renderMonthView = () => {
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(currentDate);
@@ -426,10 +587,10 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
     const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
     return (
-      <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
+      <div className="grid grid-cols-7 gap-1 sm:gap-1">
         {/* Header */}
         {['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map((day, index) => (
-          <div key={index} className="text-center text-[10px] sm:text-sm font-semibold text-gray-600 py-1 sm:py-2">
+          <div key={index} className="text-center text-xs sm:text-sm font-semibold text-gray-600 py-2 sm:py-2">
             {day}
           </div>
         ))}
@@ -453,29 +614,42 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
           return (
             <div
               key={index}
-              className={`min-h-[50px] sm:min-h-[80px] border border-gray-200 rounded p-0.5 sm:p-1 ${
+              className={`min-h-[70px] sm:min-h-[80px] border border-gray-200 rounded p-1 sm:p-1 ${
                 isCurrentMonth ? 'bg-white' : 'bg-gray-50'
-              } ${isToday(day) ? 'ring-1 sm:ring-2 ring-blue-500' : ''}`}
+              } ${isToday(day) ? 'ring-2 sm:ring-2 ring-blue-500' : ''}`}
             >
-              <div className={`text-[10px] sm:text-xs mb-0.5 sm:mb-1 ${isToday(day) ? 'text-blue-600 font-semibold' : 'text-gray-600'}`}>
+              <div className={`text-xs sm:text-xs mb-1 sm:mb-1 font-medium ${isToday(day) ? 'text-blue-600 font-bold' : 'text-gray-600'}`}>
                 {format(day, "d")}
               </div>
-              <div className="space-y-0.5">
-                {dayAppointments.slice(0, 2).map((apt) => (
-                  <div
-                    key={apt.id}
-                    className={`text-[9px] sm:text-xs p-0.5 sm:p-1 rounded cursor-pointer hover:shadow-sm truncate ${
-                      userRole === 'admin' ? getStaffColor(apt.staff_member_id) : 'bg-gray-100'
+              <div className="space-y-1">
+                {/* Mobilde: Sadece randevu sayısı göster */}
+                {dayAppointments.length > 0 && (
+                  <div 
+                    className={`text-[10px] sm:text-xs p-1.5 sm:p-1 rounded cursor-pointer hover:shadow-sm text-center ${
+                      userRole === 'admin' && dayAppointments.length > 0 
+                        ? getStaffColor(dayAppointments[0].staff_member_id) 
+                        : 'bg-blue-100 text-blue-700'
                     }`}
-                    onClick={() => onEditAppointment && onEditAppointment(apt)}
-                    title={`${apt.appointment_time || apt.time || '--:--'} - ${apt.customer_name || 'Müşteri'}`}
+                    onClick={() => handleDayClick(day, dayAppointments)}
                   >
-                    <div className="font-semibold truncate">{apt.customer_name}</div>
-                  </div>
-                ))}
-                {dayAppointments.length > 2 && (
-                  <div className="text-[9px] sm:text-xs text-gray-500 text-center">
-                    +{dayAppointments.length - 2}
+                    {isMobile ? (
+                      // Mobilde: Sadece sayı
+                      <span className="font-bold text-base">{dayAppointments.length}</span>
+                    ) : (
+                      // Desktop'ta: İlk randevuyu göster
+                      <>
+                        {dayAppointments.slice(0, 1).map((apt) => (
+                          <div key={apt.id} className="font-semibold truncate" title={`${apt.appointment_time || apt.time || '--:--'} - ${apt.customer_name || 'Müşteri'}`}>
+                            {apt.customer_name}
+                          </div>
+                        ))}
+                        {dayAppointments.length > 1 && (
+                          <div className="text-[9px] text-gray-500 mt-0.5">
+                            +{dayAppointments.length - 1} daha
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -502,23 +676,23 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
     });
 
     return (
-      <div className="space-y-2 sm:space-y-3">
+      <div className="space-y-3 sm:space-y-3">
         {sortedAppointments.map((apt) => (
           <Card
             key={apt.id}
-            className={`p-2 sm:p-4 cursor-pointer hover:shadow-md transition-shadow ${
+            className={`p-4 sm:p-4 cursor-pointer hover:shadow-md transition-shadow ${
               userRole === 'admin' ? getStaffColor(apt.staff_member_id) : 'bg-white border-gray-200'
             }`}
-            onClick={() => onEditAppointment && onEditAppointment(apt)}
+            onClick={() => handleAppointmentClick(apt)}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mb-1 sm:mb-2">
-                  <div className="text-xs sm:text-sm font-semibold text-gray-900">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2 sm:mb-2">
+                  <div className="text-sm sm:text-sm font-semibold text-gray-900">
                     {apt.appointment_date || apt.date ? format(parseISO(apt.appointment_date || apt.date), "d MMM yyyy", { locale: tr }) : 'Tarih yok'}
                   </div>
-                  <div className="flex items-center gap-1 text-xs sm:text-sm text-gray-600">
-                    <Clock className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <div className="flex items-center gap-2 text-sm sm:text-sm text-gray-600">
+                    <Clock className="w-4 h-4 sm:w-4 sm:h-4 flex-shrink-0" />
                     <div>
                       <span>{apt.appointment_time || apt.time || '--:--'}</span>
                       {apt.service_duration && calculateEndTime(apt.appointment_time || apt.time, apt.service_duration) && (
@@ -529,12 +703,12 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
                     </div>
                   </div>
                 </div>
-                <p className="text-sm sm:text-base font-semibold text-gray-900 mb-0.5 sm:mb-1 truncate">{apt.customer_name}</p>
-                <p className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2 truncate">{apt.service_name}</p>
+                <p className="text-base sm:text-base font-semibold text-gray-900 mb-1 sm:mb-1 truncate">{apt.customer_name}</p>
+                <p className="text-sm sm:text-sm text-gray-600 mb-2 sm:mb-2 truncate">{apt.service_name}</p>
                 {userRole === 'admin' && apt.staff_member_id && (
-                  <div className="flex items-center gap-1 mt-1 sm:mt-2">
-                    <User className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm text-gray-600 truncate">{getStaffName(apt.staff_member_id)}</span>
+                  <div className="flex items-center gap-2 mt-2 sm:mt-2">
+                    <User className="w-4 h-4 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                    <span className="text-sm sm:text-sm text-gray-600 truncate">{getStaffName(apt.staff_member_id)}</span>
                   </div>
                 )}
               </div>
@@ -669,6 +843,205 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
           )}
         </Card>
       </div>
+
+      {/* Randevu Bilgileri Dialog */}
+      <Dialog open={showAppointmentDialog} onOpenChange={setShowAppointmentDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Randevu Bilgileri</DialogTitle>
+            <DialogDescription>
+              Randevu detaylarını görüntüleyebilir ve silebilirsiniz
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedAppointment && (
+            <div className="space-y-4 mt-4">
+              {/* Müşteri Bilgileri */}
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-900">{selectedAppointment.customer_name}</h3>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  {selectedAppointment.phone && (
+                    <div className="flex items-center gap-1">
+                      <Phone className="w-4 h-4" />
+                      <span>{selectedAppointment.phone}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Randevu Detayları */}
+              <div className="space-y-3 pt-3 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Hizmet</span>
+                  <span className="text-sm font-semibold text-gray-900">{selectedAppointment.service_name}</span>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Tarih</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {selectedAppointment.appointment_date || selectedAppointment.date 
+                      ? format(parseISO(selectedAppointment.appointment_date || selectedAppointment.date), "d MMMM yyyy", { locale: tr })
+                      : 'Tarih yok'}
+                  </span>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Saat</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-900">
+                      {selectedAppointment.appointment_time || selectedAppointment.time || '--:--'}
+                    </span>
+                    {selectedAppointment.service_duration && calculateEndTime(selectedAppointment.appointment_time || selectedAppointment.time, selectedAppointment.service_duration) && (
+                      <span className="text-sm text-gray-500">
+                        - {calculateEndTime(selectedAppointment.appointment_time || selectedAppointment.time, selectedAppointment.service_duration)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {selectedAppointment.service_price && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Fiyat</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {selectedAppointment.service_price.toLocaleString('tr-TR')} ₺
+                    </span>
+                  </div>
+                )}
+
+                {userRole === 'admin' && selectedAppointment.staff_member_id && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Personel</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {getStaffName(selectedAppointment.staff_member_id)}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Durum</span>
+                  <Badge className={getStatusColor(selectedAppointment.status)}>
+                    {selectedAppointment.status}
+                  </Badge>
+                </div>
+
+                {selectedAppointment.notes && (
+                  <div className="pt-2 border-t border-gray-200">
+                    <span className="text-sm text-gray-600">Notlar</span>
+                    <p className="text-sm text-gray-900 mt-1">{selectedAppointment.notes}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Silme Butonu */}
+              {canDeleteAppointment(selectedAppointment) && (
+                <div className="pt-4 border-t border-gray-200">
+                  <Button
+                    variant="destructive"
+                    className="w-full"
+                    onClick={() => {
+                      setShowAppointmentDialog(false);
+                      setShowDeleteDialog(true);
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Randevuyu Sil
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Silme Onay Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Randevuyu Sil</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bu randevuyu silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>İptal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAppointment}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleting ? "Siliniyor..." : "Sil"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Günlük Randevular Dialog (Mobil için) */}
+      <Dialog open={showDayAppointmentsDialog} onOpenChange={setShowDayAppointmentsDialog}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedDay ? format(selectedDay, "d MMMM yyyy", { locale: tr }) : "Randevular"}
+            </DialogTitle>
+            <DialogDescription>
+              Bu günkü tüm randevular
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-3 mt-4">
+            {selectedDayAppointments.length === 0 ? (
+              <p className="text-center text-gray-500 py-4">Bu gün randevu bulunmuyor</p>
+            ) : (
+              selectedDayAppointments
+                .sort((a, b) => {
+                  const timeA = a.appointment_time || a.time || '00:00';
+                  const timeB = b.appointment_time || b.time || '00:00';
+                  return timeA.localeCompare(timeB);
+                })
+                .map((apt) => (
+                  <Card
+                    key={apt.id}
+                    className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${
+                      userRole === 'admin' ? getStaffColor(apt.staff_member_id) : 'bg-white border-gray-200'
+                    }`}
+                    onClick={() => {
+                      setShowDayAppointmentsDialog(false);
+                      handleAppointmentClick(apt);
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <div>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {apt.appointment_time || apt.time || '--:--'}
+                            </span>
+                            {apt.service_duration && calculateEndTime(apt.appointment_time || apt.time, apt.service_duration) && (
+                              <span className="text-sm text-gray-500 ml-1">
+                                - {calculateEndTime(apt.appointment_time || apt.time, apt.service_duration)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-base font-semibold text-gray-900 mb-1">{apt.customer_name}</p>
+                        <p className="text-sm text-gray-600 mb-2">{apt.service_name}</p>
+                        {userRole === 'admin' && apt.staff_member_id && (
+                          <div className="flex items-center gap-1 mt-2">
+                            <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                            <span className="text-sm text-gray-600">{getStaffName(apt.staff_member_id)}</span>
+                          </div>
+                        )}
+                      </div>
+                      <Badge className={`text-xs flex-shrink-0 ${getStatusColor(apt.status)}`}>
+                        {apt.status}
+                      </Badge>
+                    </div>
+                  </Card>
+                ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -83,12 +83,17 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
 
   useEffect(() => {
     loadSettings();
-    loadStaffMembers();
     if (userRole === 'staff') {
       loadCurrentStaffUsername();
       loadPersonnelStats();
     }
   }, [userRole, loadPersonnelStats]);
+
+  useEffect(() => {
+    if (settings !== null) {
+      loadStaffMembers();
+    }
+  }, [settings, userRole]);
 
   // Randevular güncellendiğinde personel stats'ını yenile
   useEffect(() => {
@@ -177,9 +182,20 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
   };
 
   const loadStaffMembers = async () => {
+    if (userRole !== 'admin') return;
     try {
       const response = await api.get("/users");
-      setStaffMembers(response.data || []);
+      let staff = (response.data || []).filter(u => u.role === 'staff');
+      
+      // Admin'in "hizmet verir" ayarı açıksa admin'i de ekle
+      if (settings?.admin_provides_service !== false) {
+        const admin = (response.data || []).find(u => u.role === 'admin');
+        if (admin) {
+          staff = [...staff, admin];
+        }
+      }
+      
+      setStaffMembers(staff);
     } catch (error) {
       console.error("Personeller yüklenemedi:", error);
     }

@@ -23,25 +23,6 @@ const Settings = ({ onNavigate, userRole, onLogout }) => {
             </div>
 
             <div className="space-y-2">
-              {/* Finans & Kasa Yönetimi Giriş Kartı (Sadece Admin) */}
-              {userRole === 'admin' && (
-                <button
-                  onClick={() => onNavigate && onNavigate("settings-finance")}
-                  className="w-full flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <DollarSign className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-base font-semibold text-gray-900">Finans & Kasa Yönetimi</p>
-                      <p className="text-xs text-gray-600">Gelir, Gider ve Personel Ödemelerini Yönetin</p>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
-                </button>
-              )}
-              
               {/* Personel için sadece Profilim göster */}
               {userRole === 'staff' && (
                 <button
@@ -64,22 +45,7 @@ const Settings = ({ onNavigate, userRole, onLogout }) => {
               {/* Admin için tüm ayarlar */}
               {userRole === 'admin' && (
                 <>
-                  <button
-                    onClick={() => onNavigate && onNavigate("settings-subscription")}
-                    className="w-full flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-left"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <Package className="w-5 h-5 text-blue-600" />
-              </div>
-                      <div>
-                        <p className="text-base font-semibold text-gray-900">Abonelik ve Faturalandırma</p>
-                        <p className="text-xs text-gray-600">Paket bilgileri ve ödeme ayarları</p>
-            </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-gray-400" />
-                  </button>
-
+                  {/* 1. İşletme Ayarları */}
                   <button
                     onClick={() => onNavigate && onNavigate("settings-profile")}
                     className="w-full flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-left"
@@ -96,6 +62,7 @@ const Settings = ({ onNavigate, userRole, onLogout }) => {
                     <ChevronRight className="w-5 h-5 text-gray-400" />
                   </button>
 
+                  {/* 2. Personel Yönetimi */}
                   <button
                     onClick={() => onNavigate && onNavigate("staff")}
                     className="w-full flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-left"
@@ -112,6 +79,7 @@ const Settings = ({ onNavigate, userRole, onLogout }) => {
                     <ChevronRight className="w-5 h-5 text-gray-400" />
                   </button>
 
+                  {/* 3. Hizmet Yönetimi */}
                   <button
                     onClick={() => onNavigate && onNavigate("services")}
                     className="w-full flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-left"
@@ -125,6 +93,40 @@ const Settings = ({ onNavigate, userRole, onLogout }) => {
                         <p className="text-xs text-gray-600">Hizmet ekleme ve fiyatlandırma</p>
               </div>
             </div>
+                    <ChevronRight className="w-5 h-5 text-gray-400" />
+                  </button>
+
+                  {/* 4. Finans & Kasa Yönetimi */}
+                  <button
+                    onClick={() => onNavigate && onNavigate("settings-finance")}
+                    className="w-full flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <DollarSign className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-base font-semibold text-gray-900">Finans & Kasa Yönetimi</p>
+                      <p className="text-xs text-gray-600">Gelir, Gider ve Personel Ödemelerini Yönetin</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                </button>
+
+                  {/* 5. Abonelik ve Faturalandırma */}
+                  <button
+                    onClick={() => onNavigate && onNavigate("settings-subscription")}
+                    className="w-full flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <Package className="w-5 h-5 text-blue-600" />
+              </div>
+                      <div>
+                        <p className="text-base font-semibold text-gray-900">Abonelik ve Faturalandırma</p>
+                        <p className="text-xs text-gray-600">Paket bilgileri ve ödeme ayarları</p>
+            </div>
+                    </div>
                     <ChevronRight className="w-5 h-5 text-gray-400" />
                   </button>
                 </>
