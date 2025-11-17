@@ -112,7 +112,7 @@ const SettingsSubscription = ({ onNavigate }) => {
               )}
 
               <Button
-                onClick={() => window.location.href = '/#pricing'}
+                onClick={() => onNavigate && onNavigate("subscribe")}
                 className="w-full bg-blue-600 hover:bg-blue-700 h-12 text-base font-semibold rounded-full"
               >
                 Paketi Değiştir

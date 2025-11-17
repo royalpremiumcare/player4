@@ -14,47 +14,47 @@ const AppRouter = () => {
   const { isAuthenticated, userRole } = useAuth();
   const location = useLocation();
 
-  // Eğer kullanıcı authenticated ise ve login/register sayfalarındaysa dashboard'a yönlendir
-  const shouldRedirectToDashboard = isAuthenticated && 
+  // Eğer kullanıcı authenticated ise ve login/register sayfalarındaysa ana sayfaya yönlendir
+  const shouldRedirectToHome = isAuthenticated && 
     (location.pathname === '/login' || 
      location.pathname === '/register' || 
      location.pathname === '/forgot-password' || 
      location.pathname === '/reset-password');
-
-  // Eğer kullanıcı authenticated değilse ve dashboard'da ise login'e yönlendir
-  const shouldRedirectToLogin = !isAuthenticated && location.pathname === '/dashboard';
   
   // Superadmin kontrolü
   const isSuperAdmin = userRole === 'superadmin';
 
   return (
     <Routes>
-      {/* Public Routes */}
-      <Route path="/" element={<LandingPage />} />
+      {/* Root Route - Authenticated ise App, değilse Landing */}
+      <Route 
+        path="/" 
+        element={isAuthenticated ? <App /> : <LandingPage />} 
+      />
       <Route 
         path="/login" 
-        element={shouldRedirectToDashboard ? <Navigate to="/dashboard" replace /> : <LoginPage />} 
+        element={shouldRedirectToHome ? <Navigate to="/" replace /> : <LoginPage />} 
       />
       <Route 
         path="/register" 
-        element={shouldRedirectToDashboard ? <Navigate to="/dashboard" replace /> : <RegisterPage />} 
+        element={shouldRedirectToHome ? <Navigate to="/" replace /> : <RegisterPage />} 
       />
       <Route 
         path="/forgot-password" 
-        element={shouldRedirectToDashboard ? <Navigate to="/dashboard" replace /> : <ForgotPasswordPage />} 
+        element={shouldRedirectToHome ? <Navigate to="/" replace /> : <ForgotPasswordPage />} 
       />
       <Route 
         path="/reset-password" 
-        element={shouldRedirectToDashboard ? <Navigate to="/dashboard" replace /> : <ResetPasswordPage />} 
+        element={shouldRedirectToHome ? <Navigate to="/" replace /> : <ResetPasswordPage />} 
       />
       <Route 
         path="/setup-password" 
         element={<SetupPassword />} 
       />
       
-      {/* Protected Routes */}
+      {/* Subscribe Route - PayTR redirect için */}
       <Route 
-        path="/dashboard" 
+        path="/subscribe" 
         element={isAuthenticated ? <App /> : <Navigate to="/login" replace />} 
       />
       
@@ -65,7 +65,7 @@ const AppRouter = () => {
           isAuthenticated && isSuperAdmin ? (
             <SuperAdmin />
           ) : isAuthenticated ? (
-            <Navigate to="/dashboard" replace />
+            <Navigate to="/" replace />
           ) : (
             <Navigate to="/login" replace />
           )
@@ -73,7 +73,7 @@ const AppRouter = () => {
       />
       
       {/* Public Booking - Catch dynamic business slugs (domain.com/isletmeadi) */}
-      {/* This must be last to avoid catching login/register/dashboard/superadmin */}
+      {/* This must be last to avoid catching login/register/dashboard/superadmin/subscribe */}
       <Route path="/:slug" element={<PublicBookingPage />} />
     </Routes>
   );

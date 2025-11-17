@@ -397,9 +397,17 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
                 </div>
               )}
               {stats.quota.is_trial && stats.quota.trial_days_remaining !== undefined && stats.quota.trial_days_remaining <= 2 && (
-                <div className="flex items-center gap-2 text-xs text-red-600 font-semibold bg-red-50 px-3 py-2 rounded-lg">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>Trial süreniz bitiyor, paket seçin</span>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs text-red-600 font-semibold bg-red-50 px-3 py-2 rounded-lg">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Trial süreniz bitiyor, paket seçin</span>
+                  </div>
+                  <Button
+                    onClick={() => onNavigate && onNavigate("subscribe")}
+                    className="w-full bg-blue-600 hover:bg-blue-700 h-10 text-sm font-semibold rounded-lg"
+                  >
+                    Şimdi Abone Ol
+                  </Button>
                 </div>
               )}
             </div>

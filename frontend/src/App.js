@@ -16,6 +16,7 @@ import Settings from "@/components/Settings";
 import SettingsSubscription from "@/components/SettingsSubscription";
 import SettingsProfile from "@/components/SettingsProfile";
 import Finance from "@/components/Finance";
+import Subscribe from "@/components/Subscribe";
 import Customers from "@/components/Customers";
 import ImportData from "@/components/ImportData";
 import StaffManagement from "@/components/StaffManagement";
@@ -45,14 +46,86 @@ function App() {
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [settings, setSettings] = useState(null);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
 
   // URL routing - path'den view'ı oku ve URL değişikliklerini dinle
   useEffect(() => {
     const handleRouteChange = () => {
       const path = window.location.pathname;
-      console.log('🔍 URL Changed:', { path, userRole });
+      const hash = window.location.hash;
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentStatus = urlParams.get('payment');
       
-      if (path === '/superadmin' && userRole === 'superadmin') {
+      console.log('🔍 URL Changed:', { path, hash, userRole, paymentStatus });
+      
+      // Hash routing ile PayTR dönüşü (authentication korunur)
+      if (hash === '#/payment-success' && userRole === 'admin') {
+        console.log('✅ Payment successful via hash routing');
+        setCurrentView('dashboard');
+        setShowForm(false);
+        setShowPaymentSuccess(true);
+        toast.success('🎉 Ödeme başarıyla tamamlandı! Aboneliğiniz aktif edildi.', {
+          duration: 8000,
+          position: 'top-center',
+          className: 'text-lg font-bold',
+        });
+        // Hash'i temizle
+        window.location.hash = '';
+        // Banner'ı 10 saniye sonra kapat
+        setTimeout(() => setShowPaymentSuccess(false), 10000);
+      } else if (hash === '#/payment-failed') {
+        console.log('❌ Payment failed via hash routing');
+        setCurrentView('subscribe');
+        setShowForm(false);
+        toast.error('Ödeme işlemi başarısız oldu. Lütfen tekrar deneyin.', {
+          duration: 5000,
+        });
+        // Hash'i temizle
+        window.location.hash = '';
+      }
+      // /subscribe path kontrolü (PayTR eski URL'lerle döndüğünde)
+      else if (path === '/subscribe') {
+        const status = urlParams.get('status');
+        console.log('🔍 /subscribe path detected, status:', status);
+        
+        if (status === 'success' && userRole === 'admin') {
+          console.log('✅ Payment successful via /subscribe path');
+          // Kullanıcıyı login sayfasına değil, ana sayfaya yönlendir
+          window.location.href = '/?payment=success';
+        } else if (status === 'failed') {
+          console.log('❌ Payment failed via /subscribe path');
+          window.location.href = '/?payment=failed';
+        } else if (userRole === 'admin') {
+          // Normal subscribe sayfası
+          setCurrentView('subscribe');
+          setShowForm(false);
+        }
+      }
+      // Query string ile PayTR dönüşü (fallback)
+      else if (paymentStatus === 'success' && userRole === 'admin') {
+        console.log('✅ Payment successful via query string');
+        setCurrentView('dashboard');
+        setShowForm(false);
+        setShowPaymentSuccess(true);
+        toast.success('🎉 Ödeme başarıyla tamamlandı! Aboneliğiniz aktif edildi.', {
+          duration: 8000,
+          position: 'top-center',
+          className: 'text-lg font-bold',
+        });
+        // URL'den parametreyi temizle
+        window.history.replaceState({}, '', '/');
+        // Banner'ı 10 saniye sonra kapat
+        setTimeout(() => setShowPaymentSuccess(false), 10000);
+      } else if (paymentStatus === 'failed') {
+        console.log('❌ Payment failed via query string');
+        setCurrentView('subscribe');
+        setShowForm(false);
+        toast.error('Ödeme işlemi başarısız oldu. Lütfen tekrar deneyin.', {
+          duration: 5000,
+        });
+        // URL'den parametreyi temizle
+        window.history.replaceState({}, '', '/');
+      } else if (path === '/superadmin' && userRole === 'superadmin') {
         console.log('✅ Setting view to superadmin');
         setCurrentView('superadmin');
         setShowForm(false);
@@ -62,11 +135,13 @@ function App() {
     // İlk yükleme
     handleRouteChange();
 
-    // URL değişikliklerini dinle (browser back/forward buttons)
+    // URL değişikliklerini dinle (browser back/forward buttons & hash changes)
     window.addEventListener('popstate', handleRouteChange);
+    window.addEventListener('hashchange', handleRouteChange);
     
     return () => {
       window.removeEventListener('popstate', handleRouteChange);
+      window.removeEventListener('hashchange', handleRouteChange);
     };
   }, [userRole]);
 
@@ -374,7 +449,34 @@ function App() {
         </header>
       )}
 
-      <main className={(currentView === "dashboard" || currentView === "settings" || currentView === "settings-subscription" || currentView === "settings-profile" || currentView === "staff" || currentView === "services" || currentView === "help-center") && !showForm ? "" : "container mx-auto px-4 py-6"}>
+      <main className={(currentView === "dashboard" || currentView === "settings" || currentView === "settings-subscription" || currentView === "settings-profile" || currentView === "subscribe" || currentView === "staff" || currentView === "services" || currentView === "help-center") && !showForm ? "" : "container mx-auto px-4 py-6"}>
+        {/* Ödeme Başarı Banner'ı */}
+        {showPaymentSuccess && (
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-6 shadow-lg sticky top-0 z-50 animate-in slide-in-from-top">
+            <div className="container mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="bg-white/20 p-3 rounded-full">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold mb-1">🎉 Ödeme Başarılı!</h3>
+                  <p className="text-green-50">Aboneliğiniz başarıyla aktif edildi. Artık tüm özelliklere erişebilirsiniz.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPaymentSuccess(false)}
+                className="text-white/80 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+        
         {currentView === "dashboard" && !showForm && (
           <Dashboard
             appointments={appointments}
@@ -487,6 +589,14 @@ function App() {
         )}
         {currentView === "settings-finance" && userRole === 'admin' && (
           <Finance 
+            onNavigate={(view) => {
+              setCurrentView(view);
+              setShowForm(false);
+            }}
+          />
+        )}
+        {currentView === "subscribe" && userRole === 'admin' && (
+          <Subscribe 
             onNavigate={(view) => {
               setCurrentView(view);
               setShowForm(false);

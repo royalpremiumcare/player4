@@ -15,6 +15,10 @@ import requests
 from zoneinfo import ZoneInfo
 import re
 import xml.etree.ElementTree as ET
+import hashlib
+import hmac
+import base64
+import json
 
 from contextlib import asynccontextmanager
 from passlib.context import CryptContext
@@ -38,9 +42,11 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler('/tmp/backend.log')
-    ]
+    ],
+    force=True  # Mevcut yapılandırmayı zorla güncelle
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("server")  # Logger adını sabit yap
+logger.setLevel(logging.INFO)  # Logger seviyesini açıkça ayarla
 # Enable socketio server logging
 logging.getLogger('socketio.server').setLevel(logging.INFO)
 logging.getLogger('engineio.server').setLevel(logging.INFO)
@@ -63,6 +69,24 @@ ILETIMERKEZI_API_KEY = os.environ.get('ILETIMERKEZI_API_KEY')
 ILETIMERKEZI_HASH = os.environ.get('ILETIMERKEZI_HASH')
 ILETIMERKEZI_SENDER = os.environ.get('ILETIMERKEZI_SENDER', 'FatihSenyuz') 
 SMS_ENABLED = os.environ.get('SMS_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+
+# --- PAYTR ÖDEME AYARLARI ---
+PAYTR_MERCHANT_ID = os.environ.get("PAYTR_MERCHANT_ID")
+PAYTR_MERCHANT_KEY = os.environ.get("PAYTR_MERCHANT_KEY")
+PAYTR_MERCHANT_SALT = os.environ.get("PAYTR_MERCHANT_SALT")
+PAYTR_API_URL = "https://www.paytr.com/odeme/api/get-token"
+# Kullanıcının yönlendirileceği frontend URL'leri (hash routing kullanarak)
+PAYTR_SUCCESS_URL = os.environ.get("PAYTR_SUCCESS_URL", "https://dev.royalpremiumcare.com/#/payment-success")
+PAYTR_FAIL_URL = os.environ.get("PAYTR_FAIL_URL", "https://dev.royalpremiumcare.com/#/payment-failed")
+# PayTR'nin POST isteği göndereceği webhook URL (PayTR panelinde de ayarlanmalı)
+PAYTR_WEBHOOK_URL = "https://dev.royalpremiumcare.com/api/webhook/paytr-success"
+
+# PayTR ortam değişkenlerini kontrol et (sunucu başlangıcında)
+if not all([PAYTR_MERCHANT_ID, PAYTR_MERCHANT_KEY, PAYTR_MERCHANT_SALT]):
+    logger.critical("!!! PAYTR ORTAM DEĞİŞKENLERİ YÜKLENEMEDİ. LÜTFEN .env DOSYASINI KONTROL EDİN !!!")
+    logger.critical(f"MERCHANT_ID={bool(PAYTR_MERCHANT_ID)}, KEY={bool(PAYTR_MERCHANT_KEY)}, SALT={bool(PAYTR_MERCHANT_SALT)}")
+    # Sunucu başlamadan önce hata fırlatma (opsiyonel - yorum satırına alındı)
+    # raise ValueError("PayTR ayarları eksik! Lütfen .env dosyasını kontrol edin.")
 
 # --- BREVO EMAIL AYARLARI ---
 BREVO_API_KEY = os.environ.get('BREVO_API_KEY')
@@ -855,6 +879,7 @@ class Token(BaseModel): access_token: str; token_type: str
 class ForgotPasswordRequest(BaseModel): username: str
 class ResetPasswordRequest(BaseModel): token: str; new_password: str
 class SetupPasswordRequest(BaseModel): token: str; new_password: str
+class PlanUpdateRequest(BaseModel): plan_id: str
 class ContactRequest(BaseModel): name: str = Field(..., min_length=1); phone: str = Field(..., min_length=10); email: Optional[str] = None; message: Optional[str] = None
 class ContactStatusUpdate(BaseModel): status: Literal["pending", "contacted", "resolved"]
 class Service(BaseModel):
@@ -2551,6 +2576,391 @@ async def update_plan(request: Request, plan_update: dict, current_user: UserInD
     )
     
     return {"message": "Plan güncellendi", "plan_id": new_plan_id}
+
+@api_router.post("/payments/create-checkout-session")
+async def create_checkout_session(
+    request: Request,
+    plan_request: PlanUpdateRequest,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """PayTR ödeme oturumu oluştur"""
+    try:
+        # Log mesajını hem console'a hem de file'a yaz
+        log_msg = f"Payment checkout session başlatılıyor: user={current_user.username}, plan_id={plan_request.plan_id}"
+        logger.info(log_msg)
+        print(f"[PAYMENT] {log_msg}")  # Console'a da yaz
+        
+        if current_user.role != "admin":
+            logger.warning(f"Payment endpoint: Yetkisiz erişim denemesi - user={current_user.username}, role={current_user.role}")
+            raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+        
+        # PayTR ayarlarını kontrol et
+        if not PAYTR_MERCHANT_ID or not PAYTR_MERCHANT_KEY or not PAYTR_MERCHANT_SALT:
+            logger.error(f"PayTR ayarları eksik! MERCHANT_ID={bool(PAYTR_MERCHANT_ID)}, KEY={bool(PAYTR_MERCHANT_KEY)}, SALT={bool(PAYTR_MERCHANT_SALT)}")
+            raise HTTPException(status_code=500, detail="Ödeme sistemi yapılandırılmamış")
+        
+        # 1. İstenen planı bul ve fiyatını al
+        plan = await get_plan_info(plan_request.plan_id)
+        if not plan:
+            logger.error(f"Plan bulunamadı: plan_id={plan_request.plan_id}")
+            raise HTTPException(status_code=404, detail="Plan bulunamadı")
+        
+        # Plan dict'inin gerekli alanlarını kontrol et
+        if 'price_monthly' not in plan or 'name' not in plan:
+            logger.error(f"Plan eksik alanlar içeriyor: plan={plan}, plan_id={plan_request.plan_id}")
+            raise HTTPException(status_code=500, detail="Plan verisi eksik veya geçersiz")
+        
+        # Trial paketini satın alınamaz
+        if plan_request.plan_id == 'tier_trial':
+            raise HTTPException(status_code=400, detail="Trial paketi satın alınamaz")
+        
+        db = await get_db_from_request(request)
+        
+        # 2. İndirimi uygula (İlk ay %25)
+        plan_doc = await get_organization_plan(db, current_user.organization_id)
+        is_first_month = plan_doc.get('is_first_month', True) if plan_doc else True
+        
+        # price_monthly değerini güvenli şekilde al
+        price_monthly = plan.get('price_monthly', 0)
+        if not isinstance(price_monthly, (int, float)) or price_monthly < 0:
+            logger.error(f"Geçersiz price_monthly değeri: {price_monthly}, plan_id={plan_request.plan_id}")
+            raise HTTPException(status_code=500, detail="Plan fiyatı geçersiz")
+        
+        if is_first_month:
+            price_to_pay = price_monthly * 0.75
+        else:
+            price_to_pay = price_monthly
+        
+        # PayTR'a göndermek için fiyatı kuruş formatına çevir
+        payment_amount_kurus = int(price_to_pay * 100)
+        
+        # 3. Kullanıcı IP Adresini Al
+        user_ip = request.client.host if request.client else "127.0.0.1"
+        
+        # 4. Benzersiz Sipariş ID'si Oluştur (Sadece alfanumerik karakterler)
+        # PayTR özel karakter kabul etmez, organization_id'deki tireleri kaldır
+        org_id_clean = current_user.organization_id.replace('-', '')
+        timestamp_str = str(int(datetime.now(timezone.utc).timestamp()))
+        merchant_oid = f"PLANN{org_id_clean}{timestamp_str}"
+        
+        # 5. BASİTLEŞTİRİLMİŞ KULLANICI BİLGİLERİ (None-Safe)
+        
+        # E-posta (Temel Kontrol)
+        user_email = (current_user.username or "").strip().lower()
+        if not user_email or "@" not in user_email or not re.match(r'^[a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', user_email):
+            logger.error(f"Geçersiz email (kullanıcı: {current_user.username}): {user_email}")
+            raise HTTPException(status_code=400, detail="Geçerli bir e-posta adresi gerekli")
+        
+        user_name = (current_user.full_name or user_email.split('@')[0]).strip()[:50]
+        
+        # Adres ve Telefon (None-Safe Kontrol)
+        settings = await db.settings.find_one({"organization_id": current_user.organization_id})
+        
+        user_address = "Adres Bilgisi Yok"  # PayTR boş kabul etmez
+        user_phone = "05000000000"  # PayTR için geçerli bir varsayılan
+        
+        if settings:
+            # DB'den gelen veriyi al ve 'str' olduğuna emin ol
+            user_address_raw = str(settings.get("address", "")).strip()
+            user_phone_raw = str(settings.get("support_phone", "")).strip()
+            
+            # Placeholder (TODO) metinlerini ve boşlukları temizle
+            if user_address_raw and "Müşteri Adresi" not in user_address_raw:
+                user_address = user_address_raw
+            if user_phone_raw and "Müşteri Telefonu" not in user_phone_raw and len(user_phone_raw) >= 10:
+                user_phone = user_phone_raw
+        
+        # 6. Sepet Bilgisi
+        plan_name = plan.get('name', 'Plan')
+        user_basket = base64.b64encode(json.dumps([
+            [plan_name, str(price_to_pay), 1]
+        ]).encode('utf-8')).decode('utf-8')  # UTF-8 kullan
+        
+        # 7. PayTR Ek Parametreleri
+        no_installment = '1'  # Taksit yok
+        max_installment = '0'  # Max taksit sayısı
+        currency = 'TL'
+        test_mode = '0'  # Production mode (1 = test mode)
+        debug_on = '1'  # Debug açık
+        timeout_limit = '30'  # Timeout süresi (dakika)
+        
+        # 8. PAYTR TOKEN (HASH) OLUŞTURMA
+        # Doğru sıra: merchant_id + user_ip + merchant_oid + email + payment_amount + user_basket + no_installment + max_installment + currency + test_mode
+        hash_str = f"{PAYTR_MERCHANT_ID}{user_ip}{merchant_oid}{user_email}{payment_amount_kurus}{user_basket}{no_installment}{max_installment}{currency}{test_mode}"
+        
+        paytr_token = base64.b64encode(hmac.new(
+            PAYTR_MERCHANT_KEY.encode('utf-8'), 
+            hash_str.encode('utf-8') + PAYTR_MERCHANT_SALT.encode('utf-8'), 
+            hashlib.sha256
+        ).digest()).decode('utf-8')
+        
+        # 9. PAYTR API'SİNE İSTEK GÖNDERME
+        logger.info(f"PayTR için email: '{user_email}' (len: {len(user_email)}), user_ip: '{user_ip}'")
+        
+        post_data = {
+            'merchant_id': PAYTR_MERCHANT_ID,
+            'user_ip': user_ip,  # Zorunlu parametre
+            'merchant_oid': merchant_oid,
+            'email': user_email,  # 'user_email' değil, 'email' kullanılmalı!
+            'payment_amount': payment_amount_kurus,
+            'paytr_token': paytr_token,
+            'user_basket': user_basket,
+            'debug_on': debug_on,
+            'no_installment': no_installment,
+            'max_installment': max_installment,
+            'user_name': user_name,
+            'user_address': user_address[:400],  # Limiti aşmadığından emin ol
+            'user_phone': user_phone[:20],
+            'merchant_ok_url': PAYTR_SUCCESS_URL,
+            'merchant_fail_url': PAYTR_FAIL_URL,
+            'timeout_limit': timeout_limit,
+            'currency': currency,
+            'test_mode': test_mode
+        }
+        
+        # PayTR için kritik alanları logla
+        logger.info(f"PayTR post_data hazırlandı: email='{post_data['email']}', user_ip='{post_data['user_ip']}', user_address='{post_data['user_address'][:50]}...', user_phone='{post_data['user_phone']}'")
+        
+        try:
+            # PayTR'a isteği gönder - data parametresi form-urlencoded formatında gönderir
+            response = requests.post(PAYTR_API_URL, data=post_data, timeout=10)
+            logger.info(f"PayTR API HTTP Status: {response.status_code}")
+            logger.info(f"PayTR API Response Text: {response.text}")
+            
+            # Debug: Gönderilen request body'yi logla
+            if hasattr(response, 'request') and hasattr(response.request, 'body'):
+                logger.info(f"PayTR Request Body (ilk 500 karakter): {str(response.request.body)[:500]}")
+            
+            # HTTP hata kontrolü
+            try:
+                response.raise_for_status()
+            except requests.exceptions.HTTPError as e:
+                logger.error(f"PayTR API HTTP Hatası: {e}")
+                logger.error(f"Response text: {response.text}")
+                raise HTTPException(status_code=503, detail="Ödeme servisi şu an hizmet veremiyor.")
+            
+            # PayTR'den gelen yanıtı parse et
+            try:
+                res_data = response.json()
+            except Exception as e:
+                logger.error(f"PayTR yanıtı JSON parse edilemedi: {e}")
+                logger.error(f"Response text: {response.text}")
+                raise HTTPException(status_code=500, detail="Ödeme servisi yanıtı işlenemedi")
+            
+            logger.info(f"PayTR API yanıtı (JSON): {res_data}")
+            
+            # PayTR'den gelen hata detaylarını logla (status: 'failed' durumu)
+            if res_data.get('status') != 'success':
+                error_reason = res_data.get('reason', 'Bilinmeyen hata')
+                error_details = res_data.get('errors', {})
+                
+                logger.error(f"PayTR HATA DETAYLARI: reason={error_reason}, errors={error_details}")
+                logger.error(f"PayTR Full Response: {res_data}")
+                
+                if 'email' in str(error_details).lower() or 'user_email' in str(error_details).lower() or 'email' in str(error_reason).lower():
+                    logger.error(f"EMAIL HATASI TESPİT EDİLDİ!")
+                    logger.error(f"Gönderilen email: '{user_email}'")
+                    logger.error(f"Email uzunluk: {len(user_email)}")
+                    logger.error(f"Email bytes: {user_email.encode('utf-8')}")
+                    logger.error(f"Email repr: {repr(user_email)}")
+                    logger.error(f"Email karakterler (ilk 20): {[ord(c) for c in user_email[:20]]}")
+                    
+                    # Email'i hex formatında göster
+                    logger.error(f"Email hex: {user_email.encode('utf-8').hex()}")
+                    
+                    # PayTR post_data'daki email'i göster
+                    logger.error(f"post_data['user_email']: '{post_data.get('user_email')}'")
+                    logger.error(f"post_data['user_email'] type: {type(post_data.get('user_email'))}")
+                    
+                    # Hata mesajını oluştur
+                    if error_details:
+                        error_details_list = []
+                        for field, message in error_details.items():
+                            error_details_list.append(f"{field}: {message}")
+                        error_msg = f"{error_reason} - {', '.join(error_details_list)}"
+                    else:
+                        error_msg = error_reason
+                    
+                    logger.error(f"PayTR hatası nedeniyle HTTPException fırlatılıyor: {error_msg}")
+                    raise HTTPException(status_code=500, detail=f"Ödeme başlatılamadı: {error_msg}")
+            
+            if res_data.get('status') == 'success':
+                # 7. BAŞARILI: ÖDEME LİNKİNİ (TOKEN) AL
+                paytr_iframe_token = res_data.get('token')
+                
+                if not paytr_iframe_token:
+                    logger.error(f"PayTR başarılı ama token yok: {res_data}")
+                    raise HTTPException(status_code=500, detail="PayTR token alınamadı")
+                
+                # Bu link, frontend'i PayTR ödeme sayfasına yönlendirecek
+                checkout_url = f"https://www.paytr.com/odeme/guvenli/{paytr_iframe_token}"
+                
+                # 8. 'merchant_oid'yi veritabanına 'pending' olarak kaydet
+                await db.payment_logs.insert_one({
+                    "merchant_oid": merchant_oid,
+                    "organization_id": current_user.organization_id,
+                    "user_id": current_user.username,
+                    "plan_id": plan_request.plan_id,
+                    "status": "pending",
+                    "amount": price_to_pay,
+                    "amount_kurus": payment_amount_kurus,
+                    "is_first_month": is_first_month,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                })
+                
+                logger.info(f"PayTR checkout session oluşturuldu: {merchant_oid} - {plan_request.plan_id}")
+                return {"checkout_url": checkout_url}
+            else:
+                # PayTR token oluşturamadı
+                # PayTR hata mesajını düzgün çıkar
+                error_reason = res_data.get('reason', 'Bilinmeyen hata')
+                errors = res_data.get('errors', {})
+                
+                # Eğer errors dict'i varsa, içindeki hataları birleştir
+                if errors:
+                    error_details = []
+                    for field, message in errors.items():
+                        error_details.append(f"{field}: {message}")
+                    error_msg = f"{error_reason} - {', '.join(error_details)}"
+                else:
+                    error_msg = error_reason
+                
+                logger.error(f"PayTR token alma hatası: reason={error_reason}, errors={errors}, full_response={res_data}")
+                raise HTTPException(status_code=500, detail=f"Ödeme başlatılamadı: {error_msg}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"PayTR API isteği hatası: {e}", exc_info=True)
+            raise HTTPException(status_code=503, detail="Ödeme servisi şu an hizmet veremiyor.")
+    
+    except HTTPException:
+        # HTTPException'ları tekrar fırlat (zaten doğru şekilde işlenmiş)
+        raise
+    except AttributeError as e:
+        # NoneType hatası veya eksik attribute hatası
+        logger.error(f"create_checkout_session İÇİNDE AttributeError: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Veri hatası: {str(e)}")
+    except Exception as e:
+        # BU, TÜM DİĞER (AttributeError vb.) ÇÖKMELERİ YAKALAR
+        logger.error(f"create_checkout_session İÇİNDE BEKLENMEDİK HATA: {e}", exc_info=True)
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Sunucu hatası: {str(e)}")
+
+@api_router.post("/webhook/paytr-success")
+async def handle_paytr_webhook(request: Request):
+    """PayTR webhook - Ödeme başarılı olduğunda çağrılır"""
+    # PayTR ayarlarını kontrol et
+    if not PAYTR_MERCHANT_ID or not PAYTR_MERCHANT_KEY or not PAYTR_MERCHANT_SALT:
+        logger.error("PayTR ayarları eksik! .env dosyasını kontrol edin.")
+        return Response(content="ERROR", status_code=500)
+    
+    try:
+        form_data = await request.form()
+        
+        # 1. PAYTR HASH DOĞRULAMASI (GÜVENLİK - ZORUNLU)
+        hash_from_paytr = form_data.get('hash')
+        merchant_oid = form_data.get('merchant_oid')
+        status = form_data.get('status')
+        total_amount = form_data.get('total_amount')
+        
+        if not hash_from_paytr or not merchant_oid or not status or not total_amount:
+            logger.warning(f"PayTR webhook eksik parametre: hash={hash_from_paytr}, merchant_oid={merchant_oid}, status={status}, total_amount={total_amount}")
+            return Response(content="ERROR", status_code=400)
+        
+        # Bizim oluşturacağımız hash
+        hash_str_to_check = f"{merchant_oid}{PAYTR_MERCHANT_SALT}{status}{total_amount}"
+        our_hash = base64.b64encode(hmac.new(
+            PAYTR_MERCHANT_KEY.encode(),
+            hash_str_to_check.encode(),
+            hashlib.sha256
+        ).digest()).decode()
+        
+        # HASH'LER UYUŞMUYORSA, BU SAHTE BİR İSTEKTİR!
+        if hash_from_paytr != our_hash:
+            logger.warning(f"PAYTR WEBHOOK HASH HATASI! IP: {request.client.host}, merchant_oid: {merchant_oid}")
+            return Response(content="ERROR", status_code=403)
+        
+        # === HASH DOĞRULANDI, ÖDEME GÜVENLİ ===
+        db = await get_db_from_request(request)
+        
+        # 2. ÖDEME DURUMUNU KONTROL ET
+        if status == 'success':
+            # Ödeme başarılı
+            
+            # 3. SİPARİŞİ (merchant_oid) BUL VE GÜNCELLE
+            payment_log = await db.payment_logs.find_one({"merchant_oid": merchant_oid})
+            
+            if not payment_log:
+                logger.error(f"Webhook hatası: {merchant_oid} bulunamadı.")
+                return Response(content="OK", status_code=200)  # PayTR'a hata verme, tekrar denemesin
+            
+            if payment_log.get("status") == "active":
+                logger.info(f"Webhook: {merchant_oid} zaten işlenmiş.")
+                return Response(content="OK", status_code=200)  # Bu işlemi zaten yapmışız
+            
+            # 4. ABONELİĞİ GÜNCELLE (Kritik Mantık)
+            plan_id = payment_log.get("plan_id")
+            organization_id = payment_log.get("organization_id")
+            
+            plan_data = await get_plan_info(plan_id)
+            if not plan_data:
+                logger.error(f"Webhook hatası: Plan {plan_id} bulunamadı.")
+                return Response(content="OK", status_code=200)
+            
+            # Mevcut plan bilgisini al
+            plan_doc = await get_organization_plan(db, organization_id)
+            
+            # Yeni plana geç
+            quota_reset = datetime.now(timezone.utc) + timedelta(days=30)
+            
+            update_data = {
+                "plan_id": plan_id,
+                "quota_usage": 0,  # Yeni plana geçince sıfırla
+                "quota_reset_date": quota_reset.isoformat(),
+                "is_first_month": False,  # Artık indirim kullanamaz
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Trial tarihlerini temizle
+            update_data['trial_start_date'] = None
+            update_data['trial_end_date'] = None
+            
+            await db.organization_plans.update_one(
+                {"organization_id": organization_id},
+                {"$set": update_data}
+            )
+            
+            # 5. Ödeme kaydını 'active' yap
+            await db.payment_logs.update_one(
+                {"merchant_oid": merchant_oid},
+                {"$set": {
+                    "status": "active",
+                    "completed_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            
+            logger.info(f"PAYTR BAŞARILI: {merchant_oid} - Plan güncellendi. Organization: {organization_id}, Plan: {plan_id}")
+            
+        else:
+            # Ödeme başarısız (status == 'failed')
+            failed_reason = form_data.get('failed_reason_msg', 'Bilinmeyen neden')
+            logger.warning(f"PAYTR BAŞARISIZ: {merchant_oid} - {failed_reason}")
+            
+            db = await get_db_from_request(request)
+            await db.payment_logs.update_one(
+                {"merchant_oid": merchant_oid},
+                {"$set": {
+                    "status": "failed",
+                    "failed_reason": failed_reason,
+                    "completed_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+        
+        # 6. PayTR'a "OK" yanıtı dön (Bu zorunludur)
+        return Response(content="OK", status_code=200)
+        
+    except Exception as e:
+        logger.error(f"PayTR webhook işleme hatası: {e}", exc_info=True)
+        return Response(content="ERROR", status_code=500)
 
 @api_router.get("/stats/dashboard")
 async def get_dashboard_stats(request: Request, current_user: UserInDB = Depends(get_current_user)):
