@@ -142,6 +142,21 @@ button:active {
   display: none;  /* Chrome, Safari and Opera */
 }
 
+/* Dialog Content Mobile Positioning - Force override */
+@media (max-width: 639px) {
+  .dialog-content-mobile[data-radix-dialog-content] {
+    top: 10% !important;
+    transform: translate(-50%, 0) !important;
+  }
+}
+
+@media (min-width: 640px) {
+  .dialog-content-mobile[data-radix-dialog-content] {
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+  }
+}
+
 /* Print styles */
 @media print {
   header, nav, button {

@@ -202,7 +202,14 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
   };
   
   const getStaffName = (staffId) => {
-    if (!staffId) return "Atanmadı";
+    // Eğer ayarlar kapalıysa (customer_can_choose_staff ve admin_provides_service kapalı), personel bilgisi gösterilmemeli
+    if (settings && !settings.customer_can_choose_staff && !settings.admin_provides_service) {
+      return null; // null döndür, böylece gösterilmez
+    }
+    
+    if (!staffId) {
+      return "Atanmadı";
+    }
     const staff = staffMembers.find(s => s.username === staffId);
     return staff?.full_name || staff?.username || "Bilinmiyor";
   };
@@ -572,7 +579,7 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
                       </DropdownMenu>
                     </div>
                     {/* Sağ Alt Köşe: Personel Etiketi (Admin için) */}
-                    {userRole === 'admin' && appointment.staff_member_id && (
+                    {userRole === 'admin' && appointment.staff_member_id && getStaffName(appointment.staff_member_id) && (
                       <div className="absolute bottom-3 right-3 flex items-center gap-1 text-[10px] text-gray-500 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
                         <User className="w-2.5 h-2.5 text-blue-600" />
                         <span className="font-medium text-blue-700">Personel: {getStaffName(appointment.staff_member_id)}</span>
@@ -691,7 +698,7 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
                       </DropdownMenu>
                     </div>
                     {/* Sağ Alt Köşe: Personel Etiketi (Admin için) */}
-                    {userRole === 'admin' && appointment.staff_member_id && (
+                    {userRole === 'admin' && appointment.staff_member_id && getStaffName(appointment.staff_member_id) && (
                       <div className="absolute bottom-3 right-3 flex items-center gap-1 text-[10px] text-gray-500 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
                         <User className="w-2.5 h-2.5 text-blue-600" />
                         <span className="font-medium text-blue-700">Personel: {getStaffName(appointment.staff_member_id)}</span>

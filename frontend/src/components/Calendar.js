@@ -314,7 +314,14 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
   }, []);
 
   const getStaffName = (staffId) => {
-    if (!staffId) return "Atanmadı";
+    // Eğer ayarlar kapalıysa (customer_can_choose_staff ve admin_provides_service kapalı), personel bilgisi gösterilmemeli
+    if (settings && !settings.customer_can_choose_staff && !settings.admin_provides_service) {
+      return null; // null döndür, böylece gösterilmez
+    }
+    
+    if (!staffId) {
+      return "Atanmadı";
+    }
     const staff = staffMembers.find(s => s.username === staffId);
     return staff?.full_name || staff?.username || "Bilinmiyor";
   };
@@ -452,7 +459,7 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
                         </div>
                         <p className="text-sm sm:text-sm font-semibold text-gray-900 mb-1 truncate">{apt.customer_name}</p>
                         <p className="text-sm text-gray-600 mt-0.5 truncate">{apt.service_name}</p>
-                        {userRole === 'admin' && apt.staff_member_id && (
+                        {userRole === 'admin' && apt.staff_member_id && getStaffName(apt.staff_member_id) && (
                           <div className="flex items-center gap-1 mt-2 sm:mt-2">
                             <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
                             <span className="text-sm text-gray-600 truncate">{getStaffName(apt.staff_member_id)}</span>
@@ -547,7 +554,7 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
                     </div>
                     <p className="font-semibold text-base sm:text-xs text-gray-900 mb-1 truncate">{apt.customer_name}</p>
                     <p className="text-sm sm:text-xs text-gray-600 truncate">{apt.service_name}</p>
-                    {userRole === 'admin' && apt.staff_member_id && (
+                    {userRole === 'admin' && apt.staff_member_id && getStaffName(apt.staff_member_id) && (
                       <div className="flex items-center gap-1 mt-2 sm:mt-1">
                         <User className="w-4 h-4 sm:w-3 sm:h-3 text-gray-500 flex-shrink-0" />
                         <span className="text-sm sm:text-xs truncate">{getStaffName(apt.staff_member_id)}</span>
@@ -705,7 +712,7 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
                 </div>
                 <p className="text-base sm:text-base font-semibold text-gray-900 mb-1 sm:mb-1 truncate">{apt.customer_name}</p>
                 <p className="text-sm sm:text-sm text-gray-600 mb-2 sm:mb-2 truncate">{apt.service_name}</p>
-                {userRole === 'admin' && apt.staff_member_id && (
+                {userRole === 'admin' && apt.staff_member_id && getStaffName(apt.staff_member_id) && (
                   <div className="flex items-center gap-2 mt-2 sm:mt-2">
                     <User className="w-4 h-4 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
                     <span className="text-sm sm:text-sm text-gray-600 truncate">{getStaffName(apt.staff_member_id)}</span>
@@ -908,7 +915,7 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
                   </div>
                 )}
 
-                {userRole === 'admin' && selectedAppointment.staff_member_id && (
+                {userRole === 'admin' && selectedAppointment.staff_member_id && getStaffName(selectedAppointment.staff_member_id) && (
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">Personel</span>
                     <span className="text-sm font-semibold text-gray-900">
@@ -1025,7 +1032,7 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
                         </div>
                         <p className="text-base font-semibold text-gray-900 mb-1">{apt.customer_name}</p>
                         <p className="text-sm text-gray-600 mb-2">{apt.service_name}</p>
-                        {userRole === 'admin' && apt.staff_member_id && (
+                        {userRole === 'admin' && apt.staff_member_id && getStaffName(apt.staff_member_id) && (
                           <div className="flex items-center gap-1 mt-2">
                             <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
                             <span className="text-sm text-gray-600">{getStaffName(apt.staff_member_id)}</span>

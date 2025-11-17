@@ -50,13 +50,24 @@ const Customers = ({ onNavigate, onNewAppointment }) => {
     phone: ""
   });
   const [savingCustomer, setSavingCustomer] = useState(false);
+  const [settings, setSettings] = useState(null);
 
   // WebSocket connection for real-time updates
   const socketRef = useRef(null);
 
+  const loadSettings = async () => {
+    try {
+      const response = await api.get("/settings");
+      setSettings(response.data);
+    } catch (error) {
+      // Silent error
+    }
+  };
+
   // WebSocket bağlantısını sadece bir kez oluştur
   useEffect(() => {
     const initialize = async () => {
+      await loadSettings();
       if (userRole === 'staff') {
         await loadCurrentStaffUsername();
       }
@@ -418,7 +429,8 @@ const Customers = ({ onNavigate, onNewAppointment }) => {
                     <p className="text-sm text-gray-600">
                       {apt.appointment_time} - {apt.service_name}
                     </p>
-                    {userRole === 'admin' && apt.staff_member_id && (
+                    {userRole === 'admin' && apt.staff_member_id && 
+                     (!settings || settings.customer_can_choose_staff || settings.admin_provides_service) && (
                       <p className="text-xs text-gray-500 mt-1">
                         Personel: {apt.staff_member_id}
                       </p>

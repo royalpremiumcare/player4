@@ -137,16 +137,6 @@ const StaffManagement = ({ onNavigate }) => {
     setSelectedDaysOff(staffMember.days_off || ["sunday"]);
   };
 
-  // Mobilde modal açıldığında sayfayı en üste scroll et
-  useEffect(() => {
-    if (editingPaymentStaff) {
-      // Kısa bir gecikme ile scroll et (modal render olana kadar bekle)
-      const timer = setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [editingPaymentStaff]);
 
   const handleSaveDaysOff = async () => {
     if (!editingDaysOffStaff) return;
@@ -210,7 +200,7 @@ const StaffManagement = ({ onNavigate }) => {
       return;
     }
     
-    if (editingPaymentStaff.payment_type === "commission" && (!paymentAmount || paymentAmount <= 0 || paymentAmount > 100)) {
+    if (editingPaymentStaff?.payment_type === "commission" && (!paymentAmount || paymentAmount <= 0 || paymentAmount > 100)) {
       toast.error("Lütfen geçerli bir komisyon oranı girin (1-100)");
       return;
     }
@@ -219,7 +209,7 @@ const StaffManagement = ({ onNavigate }) => {
     try {
       const encodedUsername = encodeURIComponent(editingPaymentStaff.username);
       await api.put(`/staff/${encodedUsername}/payment`, {
-        payment_type: editingPaymentStaff.payment_type,
+        payment_type: editingPaymentStaff?.payment_type,
         payment_amount: paymentAmount
       }, {
         headers: { 'Content-Type': 'application/json' }
@@ -232,7 +222,7 @@ const StaffManagement = ({ onNavigate }) => {
         s.username === editingPaymentStaff.username 
           ? { 
               ...s, 
-              payment_type: editingPaymentStaff.payment_type,
+              payment_type: editingPaymentStaff?.payment_type,
               payment_amount: paymentAmount
             }
           : s
@@ -665,10 +655,18 @@ const StaffManagement = ({ onNavigate }) => {
                 <div className="flex flex-col sm:flex-row gap-2">
                   {staffMember.role !== 'admin' && (
                     <>
-                      <Dialog>
+                      <Dialog 
+                        open={editingPaymentStaff?.username === staffMember.username}
+                        onOpenChange={(open) => {
+                          if (!open) {
+                            setEditingPaymentStaff(null);
+                          } else {
+                            openEditPaymentModal(staffMember);
+                          }
+                        }}
+                      >
                         <DialogTrigger asChild>
                           <Button 
-                            onClick={() => openEditPaymentModal(staffMember)}
                             variant="outline" 
                             className="flex-1 w-full sm:w-auto"
                           >
@@ -677,41 +675,35 @@ const StaffManagement = ({ onNavigate }) => {
                           </Button>
                         </DialogTrigger>
                       
-                      {editingPaymentStaff?.username === staffMember.username && (
                         <DialogContent 
-                          className="max-w-md max-h-[90vh] overflow-y-auto"
-                          onOpenAutoFocus={(e) => {
-                            // Mobilde modal açıldığında sayfayı en üste scroll et
-                            setTimeout(() => {
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }, 100);
-                          }}
+                          className="max-w-md max-h-[90vh] overflow-hidden"
                         >
                           <DialogHeader>
                             <DialogTitle>
-                              {editingPaymentStaff.full_name || editingPaymentStaff.username} - Ödeme Ayarları
+                              {editingPaymentStaff?.full_name || editingPaymentStaff?.username} - Ödeme Ayarları
                             </DialogTitle>
                             <DialogDescription>
                               Personelin çalışma modelini ve ödeme ayarlarını düzenleyin.
                             </DialogDescription>
                           </DialogHeader>
                           
-                          <div className="space-y-4 py-4">
+                          <div className="space-y-4 py-4 overflow-y-auto max-h-[calc(90vh-180px)]">
                             {/* Çalışma Modeli */}
                             <div className="space-y-3">
                               <Label className="text-sm font-medium text-gray-700 mb-2 block">Çalışma Modeli</Label>
                               
                               {/* Segmented Control */}
-                              <div className="bg-gray-100 p-1 rounded-lg flex">
+                              <div className="bg-gray-100 p-1 rounded-lg flex w-full">
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    if (!editingPaymentStaff) return;
                                     // payment_type değiştiğinde payment_amount'u temizle (sadece commission'dan salary'ye geçerken)
                                     const newAmount = editingPaymentStaff.payment_type === "commission" ? "" : (editingPaymentStaff.payment_amount || "");
                                     setEditingPaymentStaff({ ...editingPaymentStaff, payment_type: "salary", payment_amount: newAmount });
                                   }}
                                   className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${
-                                    editingPaymentStaff.payment_type === "salary"
+                                    editingPaymentStaff?.payment_type === "salary"
                                       ? "bg-white text-blue-600 shadow-sm"
                                       : "text-gray-500 hover:text-gray-700"
                                   }`}
@@ -721,12 +713,13 @@ const StaffManagement = ({ onNavigate }) => {
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    if (!editingPaymentStaff) return;
                                     // payment_type değiştiğinde payment_amount'u temizle (sadece salary'den commission'a geçerken)
                                     const newAmount = editingPaymentStaff.payment_type === "salary" ? "" : (editingPaymentStaff.payment_amount || "");
                                     setEditingPaymentStaff({ ...editingPaymentStaff, payment_type: "commission", payment_amount: newAmount });
                                   }}
                                   className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${
-                                    editingPaymentStaff.payment_type === "commission"
+                                    editingPaymentStaff?.payment_type === "commission"
                                       ? "bg-white text-blue-600 shadow-sm"
                                       : "text-gray-500 hover:text-gray-700"
                                   }`}
@@ -736,7 +729,7 @@ const StaffManagement = ({ onNavigate }) => {
                               </div>
                               
                               {/* Dinamik Input Alanı */}
-                              {editingPaymentStaff.payment_type === "salary" && (
+                              {editingPaymentStaff?.payment_type === "salary" && (
                                 <div className="space-y-2">
                                   <Label htmlFor="edit_payment_amount" className="text-sm font-medium text-gray-700">
                                     Aylık Maaş Tutarı
@@ -748,8 +741,9 @@ const StaffManagement = ({ onNavigate }) => {
                                       type="number"
                                       min="0"
                                       step="0.01"
-                                      value={editingPaymentStaff.payment_amount || ""}
+                                      value={editingPaymentStaff?.payment_amount || ""}
                                       onChange={(e) => {
+                                        if (!editingPaymentStaff) return;
                                         const value = e.target.value;
                                         setEditingPaymentStaff({ ...editingPaymentStaff, payment_amount: value === "" ? "" : value });
                                       }}
@@ -760,7 +754,7 @@ const StaffManagement = ({ onNavigate }) => {
                                 </div>
                               )}
                               
-                              {editingPaymentStaff.payment_type === "commission" && (
+                              {editingPaymentStaff?.payment_type === "commission" && (
                                 <div className="space-y-2">
                                   <Label htmlFor="edit_payment_amount" className="text-sm font-medium text-gray-700">
                                     Hizmet Başına Komisyon Oranı
@@ -773,8 +767,9 @@ const StaffManagement = ({ onNavigate }) => {
                                       min="0"
                                       max="100"
                                       step="0.1"
-                                      value={editingPaymentStaff.payment_amount || ""}
+                                      value={editingPaymentStaff?.payment_amount || ""}
                                       onChange={(e) => {
+                                        if (!editingPaymentStaff) return;
                                         const value = e.target.value;
                                         setEditingPaymentStaff({ ...editingPaymentStaff, payment_amount: value === "" ? "" : value });
                                       }}
@@ -807,13 +802,20 @@ const StaffManagement = ({ onNavigate }) => {
                             </Button>
                           </div>
                         </DialogContent>
-                      )}
                       </Dialog>
 
-                      <Dialog>
+                      <Dialog
+                        open={editingDaysOffStaff?.username === staffMember.username}
+                        onOpenChange={(open) => {
+                          if (!open) {
+                            setEditingDaysOffStaff(null);
+                          } else {
+                            openEditDaysOffModal(staffMember);
+                          }
+                        }}
+                      >
                         <DialogTrigger asChild>
                           <Button 
-                            onClick={() => openEditDaysOffModal(staffMember)}
                             variant="outline" 
                             className="flex-1 w-full sm:w-auto"
                           >
@@ -822,25 +824,19 @@ const StaffManagement = ({ onNavigate }) => {
                           </Button>
                         </DialogTrigger>
                         
-                        {editingDaysOffStaff?.username === staffMember.username && (
-                          <DialogContent 
-                            className="max-w-md max-h-[90vh] overflow-y-auto"
-                            onOpenAutoFocus={(e) => {
-                              setTimeout(() => {
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                              }, 100);
-                            }}
-                          >
+                        <DialogContent 
+                          className="max-w-md max-h-[90vh] overflow-hidden"
+                        >
                             <DialogHeader>
                               <DialogTitle>
-                                {editingDaysOffStaff.full_name || editingDaysOffStaff.username} - Tatil Günleri
+                                {editingDaysOffStaff?.full_name || editingDaysOffStaff?.username} - Tatil Günleri
                               </DialogTitle>
                               <DialogDescription>
                                 Personelin çalışmadığı günleri işaretleyin. Diğer günler, 'Genel İşletme Saatleri'ne uymalıdır.
                               </DialogDescription>
                             </DialogHeader>
                             
-                            <div className="space-y-4 py-4">
+                            <div className="space-y-4 py-4 overflow-y-auto max-h-[calc(90vh-180px)]">
                               <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-2">
                                 {[
                                   { key: 'monday', label: 'Pazartesi' },
@@ -894,15 +890,22 @@ const StaffManagement = ({ onNavigate }) => {
                               </Button>
                             </div>
                           </DialogContent>
-                        )}
                       </Dialog>
                     </>
                   )}
                   
-                  <Dialog>
+                  <Dialog
+                    open={editingStaff?.username === staffMember.username}
+                    onOpenChange={(open) => {
+                      if (!open) {
+                        setEditingStaff(null);
+                      } else {
+                        openEditModal(staffMember);
+                      }
+                    }}
+                  >
                     <DialogTrigger asChild>
                       <Button 
-                        onClick={() => openEditModal(staffMember)}
                         variant="outline" 
                         className="flex-1 w-full sm:w-auto"
                       >
@@ -911,15 +914,14 @@ const StaffManagement = ({ onNavigate }) => {
                       </Button>
                     </DialogTrigger>
                     
-                    {editingStaff?.username === staffMember.username && (
-                      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden">
                         <DialogHeader>
                           <DialogTitle>
-                            {editingStaff.full_name || editingStaff.username} - Hizmet Ataması
+                            {editingStaff?.full_name || editingStaff?.username} - Hizmet Ataması
                           </DialogTitle>
                         </DialogHeader>
                         
-                        <div className="space-y-4 py-4">
+                        <div className="space-y-4 py-4 overflow-y-auto max-h-[calc(90vh-180px)]">
                           <p className="text-sm text-gray-600">
                             Bu personelin verebileceği hizmetleri seçin:
                           </p>
@@ -929,7 +931,7 @@ const StaffManagement = ({ onNavigate }) => {
                               Henüz hizmet eklenmemiş. Önce "Hizmet Yönetimi" sayfasından hizmet ekleyin.
                             </p>
                           ) : (
-                            <div className="grid grid-cols-1 gap-3">
+                            <div className="grid grid-cols-1 gap-3 w-full">
                               {services.map((service) => {
                                 const isSelected = selectedServices.includes(service.id);
                                 
@@ -979,7 +981,6 @@ const StaffManagement = ({ onNavigate }) => {
                           </Button>
                         </div>
                       </DialogContent>
-                    )}
                   </Dialog>
                   
                   {staffMember.role !== 'admin' && (

@@ -2016,6 +2016,18 @@ async def create_appointment(request: Request, appointment: AppointmentCreate, c
             {"_id": 0, "username": 1, "role": 1}
         ).to_list(1000)
         
+        # Eğer admin_provides_service kapalıysa ve başka personel yoksa, admin'i personel listesine ekle
+        # (Admin hizmet vermiyor ayarı açık olsa bile, başka personel yoksa admin'i kullanabiliriz)
+        if not qualified_staff:
+            # Admin'in bu hizmeti verebilip veremediğini kontrol et
+            admin_user = await db.users.find_one(
+                {"username": current_user.username, "organization_id": current_user.organization_id, "role": "admin"},
+                {"_id": 0, "username": 1, "role": 1, "permitted_service_ids": 1}
+            )
+            if admin_user and appointment.service_id in (admin_user.get('permitted_service_ids') or []):
+                qualified_staff = [{"username": admin_user['username'], "role": "admin"}]
+                logging.info(f"⚠️ No staff found, but admin can provide service. Using admin: {admin_user['username']}")
+        
         if not qualified_staff:
             # Kota artırıldı ama personel bulunamadı, geri al
             plan_doc = await db.organization_plans.find_one({"organization_id": current_user.organization_id})
@@ -2904,7 +2916,8 @@ async def get_users(request: Request, current_user: UserInDB = Depends(get_curre
 # === STAFF/PERSONEL YÖNETİMİ (Model D) ===
 class PaymentUpdate(BaseModel):
     payment_type: str
-    payment_amount: float
+    payment_amount: Optional[float] = None
+    days_off: Optional[List[str]] = None
 
 class StaffCreate(BaseModel):
     username: str
@@ -3053,48 +3066,58 @@ async def update_current_user(request: Request, user_update: UserUpdate, current
 @api_router.put("/staff/{staff_id}/payment")
 async def update_staff_payment(request: Request, staff_id: str, payment_data: PaymentUpdate, current_user: UserInDB = Depends(get_current_user)):
     """Admin, personelin ödeme ayarlarını (maaş/prim) güncelleyebilir"""
-    # Sadece admin güncelleyebilir
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
-    
-    db = await get_db_from_request(request)
-    
-    # Personelin aynı organization'da olduğunu kontrol et
-    staff = await db.users.find_one({"username": staff_id, "organization_id": current_user.organization_id})
-    if not staff:
-        raise HTTPException(status_code=404, detail="Personel bulunamadı veya erişim yok")
-    
-    # payment_amount'u float'a çevir (eğer string ise)
-    payment_amount = payment_data.payment_amount
-    if payment_amount is not None:
-        if isinstance(payment_amount, str):
-            try:
-                payment_amount = float(payment_amount)
-            except (ValueError, TypeError):
+    try:
+        # Sadece admin güncelleyebilir
+        if current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+        
+        db = await get_db_from_request(request)
+        
+        # URL decode staff_id (email olabilir)
+        import urllib.parse
+        staff_id_decoded = urllib.parse.unquote(staff_id)
+        
+        # Personelin aynı organization'da olduğunu kontrol et
+        staff = await db.users.find_one({"username": staff_id_decoded, "organization_id": current_user.organization_id})
+        if not staff:
+            raise HTTPException(status_code=404, detail="Personel bulunamadı veya erişim yok")
+        
+        # payment_amount'u float'a çevir (eğer string ise)
+        payment_amount = payment_data.payment_amount
+        if payment_amount is not None:
+            if isinstance(payment_amount, str):
+                try:
+                    payment_amount = float(payment_amount)
+                except (ValueError, TypeError):
+                    payment_amount = 0.0
+            elif not isinstance(payment_amount, (int, float)):
                 payment_amount = 0.0
-        elif not isinstance(payment_amount, (int, float)):
+        else:
             payment_amount = 0.0
-    else:
-        payment_amount = 0.0
-    
-    # Payment bilgilerini güncelle
-    update_fields = {
-        "payment_type": payment_data.payment_type,
-        "payment_amount": payment_amount
-    }
-    
-    # days_off varsa ekle
-    if payment_data.days_off is not None:
-        update_fields["days_off"] = payment_data.days_off
-    
-    await db.users.update_one(
-        {"username": staff_id, "organization_id": current_user.organization_id},
-        {"$set": update_fields}
-    )
-    
-    logging.info(f"Personel ödeme ayarları güncellendi: {staff_id}, payment_type={payment_data.payment_type}, payment_amount={payment_amount}")
-    
-    return {"message": "Personel ödeme ayarları güncellendi", "staff_id": staff_id, "payment_type": payment_data.payment_type, "payment_amount": payment_amount}
+        
+        # Payment bilgilerini güncelle
+        update_fields = {
+            "payment_type": payment_data.payment_type,
+            "payment_amount": payment_amount
+        }
+        
+        # days_off varsa ekle (PaymentUpdate modelinde artık optional)
+        if hasattr(payment_data, 'days_off') and payment_data.days_off is not None:
+            update_fields["days_off"] = payment_data.days_off
+        
+        await db.users.update_one(
+            {"username": staff_id_decoded, "organization_id": current_user.organization_id},
+            {"$set": update_fields}
+        )
+        
+        logging.info(f"Personel ödeme ayarları güncellendi: {staff_id_decoded}, payment_type={payment_data.payment_type}, payment_amount={payment_amount}")
+        
+        return {"message": "Personel ödeme ayarları güncellendi", "staff_id": staff_id_decoded, "payment_type": payment_data.payment_type, "payment_amount": payment_amount}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Personel ödeme ayarı güncelleme hatası: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ödeme ayarları güncellenirken hata oluştu: {str(e)}")
 
 @api_router.put("/staff/{staff_id}/days-off")
 async def update_staff_days_off(request: Request, staff_id: str, days_off_data: dict, current_user: UserInDB = Depends(get_current_user)):
@@ -4139,8 +4162,20 @@ async def get_availability(request: Request, organization_id: str, service_id: s
         
         staff_members = await db.users.find(
             staff_query,
-            {"_id": 0, "id": 1, "username": 1, "role": 1, "days_off": 1}
+            {"_id": 0, "id": 1, "username": 1, "role": 1, "days_off": 1, "permitted_service_ids": 1}
         ).to_list(1000)
+        
+        # Eğer seçilen personel bulunamadıysa ve admin_provides_service kapalıysa bile, admin'in bu hizmeti verebilip veremediğini kontrol et
+        if not staff_members:
+            # Admin'in bu hizmeti verebilip veremediğini kontrol et (eğer seçilen staff_id admin ise)
+            admin_user = await db.users.find_one(
+                {"organization_id": organization_id, "role": "admin", "username": staff_id},
+                {"_id": 0, "id": 1, "username": 1, "role": 1, "days_off": 1, "permitted_service_ids": 1}
+            )
+            if admin_user and service_id in (admin_user.get('permitted_service_ids') or []):
+                # Admin bu hizmeti verebiliyorsa, admin'i personel listesine ekle
+                staff_members = [admin_user]
+                logging.info(f"⚠️ Availability: Selected staff not found, but admin can provide service. Using admin: {admin_user['username']}")
         
         if not staff_members:
             return {"available_slots": [], "message": "Seçilen personel bu hizmeti veremiyor"}
@@ -4171,12 +4206,43 @@ async def get_availability(request: Request, organization_id: str, service_id: s
         
         staff_members = await db.users.find(
             staff_query,
-            {"_id": 0, "id": 1, "username": 1, "role": 1, "days_off": 1}
+            {"_id": 0, "id": 1, "username": 1, "role": 1, "days_off": 1, "permitted_service_ids": 1}
         ).to_list(1000)
+        
+        # Eğer başka personel yoksa ve admin_provides_service kapalıysa bile, admin'in bu hizmeti verebilip veremediğini kontrol et
+        if not staff_members:
+            logging.info(f"⚠️ Availability: No staff found for service_id={service_id}, admin_provides_service={admin_provides_service}. Checking admin...")
+            # Admin'in bu hizmeti verebilip veremediğini kontrol et
+            admin_user = await db.users.find_one(
+                {"organization_id": organization_id, "role": "admin"},
+                {"_id": 0, "id": 1, "username": 1, "role": 1, "days_off": 1, "permitted_service_ids": 1}
+            )
+            if admin_user:
+                admin_permitted_services = admin_user.get('permitted_service_ids') or []
+                logging.info(f"⚠️ Availability: Admin found: {admin_user['username']}, permitted_service_ids: {admin_permitted_services}, checking service_id: {service_id}")
+                if service_id in admin_permitted_services:
+                    # Admin bu hizmeti verebiliyorsa, admin'i personel listesine ekle
+                    # Admin'in tüm gerekli alanlarını ekle
+                    admin_staff_member = {
+                        "id": admin_user.get('id', admin_user.get('username')),
+                        "username": admin_user['username'],
+                        "role": "admin",
+                        "days_off": admin_user.get('days_off', []),
+                        "permitted_service_ids": admin_permitted_services
+                    }
+                    staff_members = [admin_staff_member]
+                    logging.info(f"✅ Availability: Admin can provide service. Using admin: {admin_user['username']}, staff_member: {admin_staff_member}")
+                else:
+                    logging.warning(f"❌ Availability: Admin found but service_id {service_id} not in permitted_service_ids: {admin_permitted_services}")
+            else:
+                logging.warning(f"❌ Availability: No admin user found for organization_id: {organization_id}")
         
         if not staff_members:
             # Hiç personel yoksa veya hiçbiri bu hizmeti vermiyorsa boş dön
+            logging.warning(f"❌ Availability: No staff members found after admin check. Returning empty slots.")
             return {"available_slots": [], "message": "Bu hizmet için uygun personel bulunamadı"}
+    
+        logging.info(f"✅ Availability: Found {len(staff_members)} staff member(s): {[s.get('username') for s in staff_members]}")
     
         # Tüm personellerin bu gün izinli olup olmadığını kontrol et
         all_staff_off = all(
@@ -4184,7 +4250,7 @@ async def get_availability(request: Request, organization_id: str, service_id: s
             for staff in staff_members
         )
         if all_staff_off:
-            logging.info(f"All staff are off on {day_name}")
+            logging.info(f"❌ Availability: All staff are off on {day_name}. Staff: {[s.get('username') for s in staff_members]}, days_off: {[s.get('days_off') for s in staff_members]}")
             return {
                 "available_slots": [],
                 "all_slots": [],
@@ -4232,6 +4298,7 @@ async def get_availability(request: Request, organization_id: str, service_id: s
     # KRİTİK: Personel aynı anda sadece 1 müşteriye hizmet verebilir
     # O hizmeti verebilen personellerin o tarihteki TÜM randevularını çek (hangi hizmet olursa olsun)
     staff_ids = [staff['username'] for staff in staff_members]
+    logging.info(f"📋 Availability: staff_members count: {len(staff_members)}, staff_ids: {staff_ids}, staff_id param: {staff_id}")
     
     # Personellerin o gün için TÜM randevularını al (tüm hizmetler dahil) - başlangıç ve bitiş saatleriyle
     all_staff_appointments = await db.appointments.find(
@@ -4523,18 +4590,30 @@ async def create_public_appointment(request: Request, appointment: AppointmentCr
         assigned_staff_id = appointment.staff_member_id
     else:
         # Müşteri "Farketmez" seçti veya personel seçimi yok
-        # Önce customer_can_choose_staff ayarını kontrol et
+        # Önce customer_can_choose_staff ve admin_provides_service ayarlarını kontrol et
         settings_data = await db.settings.find_one({"organization_id": organization_id})
         customer_can_choose_staff = settings_data.get('customer_can_choose_staff', False) if settings_data else False
+        admin_provides_service = settings_data.get('admin_provides_service', True) if settings_data else True
         
-        # Eğer customer_can_choose_staff kapalıysa, personel atama yapma
-        if not customer_can_choose_staff:
-            logging.info(f"ℹ️ customer_can_choose_staff is disabled, skipping staff assignment")
-            assigned_staff_id = None
+        # Eğer customer_can_choose_staff kapalıysa ama admin_provides_service açıksa, otomatik atama yap
+        # customer_can_choose_staff açıksa da otomatik atama yap
+        # Her ikisi de kapalıysa bile, admin hizmet verebiliyorsa otomatik atama yap
+        if not customer_can_choose_staff and not admin_provides_service:
+            # Her ikisi de kapalıysa, önce admin'i kontrol et
+            admin_user = await db.users.find_one(
+                {"organization_id": organization_id, "role": "admin"},
+                {"_id": 0, "username": 1, "role": 1, "permitted_service_ids": 1}
+            )
+            if admin_user and appointment.service_id in (admin_user.get('permitted_service_ids') or []):
+                # Admin bu hizmeti verebiliyorsa, admin'i kullan
+                assigned_staff_id = admin_user['username']
+                logging.info(f"ℹ️ customer_can_choose_staff and admin_provides_service are both disabled, but using admin: {admin_user['username']}")
+            else:
+                # Admin bu hizmeti veremiyorsa, personel atama yapma
+                logging.info(f"ℹ️ customer_can_choose_staff and admin_provides_service are both disabled, and admin cannot provide this service")
+                assigned_staff_id = None
         else:
-            # customer_can_choose_staff açıksa, otomatik atama yap
-            admin_provides_service = settings_data.get('admin_provides_service', True) if settings_data else True
-            
+            # customer_can_choose_staff açıksa veya admin_provides_service açıksa, otomatik atama yap
             # Bu hizmeti verebilen personelleri bul
             qualified_staff_query = {
                 "organization_id": organization_id,
@@ -4545,26 +4624,45 @@ async def create_public_appointment(request: Request, appointment: AppointmentCr
             if not admin_provides_service:
                 qualified_staff_query["role"] = {"$ne": "admin"}
             
-        qualified_staff = await db.users.find(
+            qualified_staff = await db.users.find(
                 qualified_staff_query,
                 {"_id": 0, "username": 1, "role": 1}
-        ).to_list(1000)
-        
-        if not qualified_staff:
-            raise HTTPException(
-                status_code=400,
-                detail="Bu hizmet için uygun personel bulunamadı"
-            )
-        
+            ).to_list(1000)
+            
+            # Eğer başka personel yoksa, admin'i personel listesine ekle (admin_provides_service açıksa)
+            # (Admin hizmet vermiyor ayarı açık olsa bile, başka personel yoksa admin'i kullanabiliriz)
+            if not qualified_staff:
+                # Admin'in bu hizmeti verebilip veremediğini kontrol et
+                admin_user = await db.users.find_one(
+                    {"organization_id": organization_id, "role": "admin"},
+                    {"_id": 0, "username": 1, "role": 1, "permitted_service_ids": 1}
+                )
+                if admin_user and appointment.service_id in (admin_user.get('permitted_service_ids') or []):
+                    qualified_staff = [{"username": admin_user['username'], "role": "admin"}]
+                    logging.info(f"⚠️ Public: No staff found, but admin can provide service. Using admin: {admin_user['username']}")
+            
+            if not qualified_staff:
+                # Kota artırıldı ama personel bulunamadı, geri al
+                plan_doc = await db.organization_plans.find_one({"organization_id": organization_id})
+                if plan_doc:
+                    await db.organization_plans.update_one(
+                        {"organization_id": organization_id},
+                        {"$inc": {"quota_usage": -1}}
+                    )
+                raise HTTPException(
+                    status_code=400,
+                    detail="Bu hizmet için uygun personel bulunamadı"
+                )
+            
             # Boş personel bul (duration'a göre çakışma kontrolü ile)
-        for staff in qualified_staff:
+            for staff in qualified_staff:
                 # Bu personelin o tarihteki tüm randevularını çek
                 existing_appointments = await db.appointments.find(
                     {
-                "organization_id": organization_id,
-                "staff_member_id": staff['username'],
-                "appointment_date": appointment.appointment_date,
-                "status": {"$ne": "İptal"}
+                        "organization_id": organization_id,
+                        "staff_member_id": staff['username'],
+                        "appointment_date": appointment.appointment_date,
+                        "status": {"$ne": "İptal"}
                     },
                     {"_id": 0, "appointment_time": 1, "service_id": 1}
                 ).to_list(100)
@@ -4601,18 +4699,25 @@ async def create_public_appointment(request: Request, appointment: AppointmentCr
                     logging.info(f"✅ Public booking auto-assigned to {staff['username']} for {appointment.appointment_time}")
                     break
         
+        # Eğer ayarlar kapalıysa (customer_can_choose_staff ve admin_provides_service kapalı), 
+        # staff_member_id None olarak kaydedilebilir (atama yapılmaz)
         if not assigned_staff_id:
-            # Kota artırıldı ama personel bulunamadı, geri al
-            plan_doc = await db.organization_plans.find_one({"organization_id": organization_id})
-            if plan_doc:
-                await db.organization_plans.update_one(
-                    {"organization_id": organization_id},
-                    {"$inc": {"quota_usage": -1}}
+            if not customer_can_choose_staff and not admin_provides_service:
+                # Ayarlar kapalıysa, randevuyu staff_member_id None olarak kaydet (atama yapma)
+                logging.info(f"ℹ️ Public booking: Settings disabled, saving appointment without staff assignment")
+                assigned_staff_id = None  # None olarak kalacak, randevu oluşturulacak
+            else:
+                # Ayarlar açıksa ama personel bulunamadı, hata ver
+                plan_doc = await db.organization_plans.find_one({"organization_id": organization_id})
+                if plan_doc:
+                    await db.organization_plans.update_one(
+                        {"organization_id": organization_id},
+                        {"$inc": {"quota_usage": -1}}
+                    )
+                raise HTTPException(
+                    status_code=400,
+                    detail="Bu saat dilimi doludur. Lütfen başka bir saat seçin."
                 )
-            raise HTTPException(
-                status_code=400,
-                detail="Bu saat dilimi doludur. Lütfen başka bir saat seçin."
-            )
     
     # Randevuyu oluştur
     appointment_data = appointment.model_dump()
@@ -4971,7 +5076,12 @@ static_files_dir = str(ROOT_DIR / "static")
 app.mount("/api/static", StaticFiles(directory=static_files_dir), name="static")
 
 # --- CORS Ayarı ---
-cors_origins_str = os.environ.get('CORS_ORIGINS', '*'); cors_origins = ['*'] if cors_origins_str == '*' else [origin.strip() for origin in cors_origins_str.split(',') if origin.strip()]
+cors_origins_str = os.environ.get('CORS_ORIGINS', '*')
+if cors_origins_str == '*':
+    cors_origins = ['*']
+else:
+    # Virgülle ayrılmış origin'leri parse et ve boşlukları temizle
+    cors_origins = [origin.strip() for origin in cors_origins_str.split(',') if origin.strip()]
 logging.info(f"CORS origins configured: {cors_origins}")
 app.add_middleware(
     CORSMiddleware,
