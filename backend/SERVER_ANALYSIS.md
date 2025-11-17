@@ -1383,7 +1383,330 @@ Bu dokümantasyon, `server.py` dosyasının tüm özelliklerini, endpoint'lerini
 
 ---
 
-**Dokümantasyon Tarihi:** 2025-11-14  
-**Versiyon:** 1.4.2 (Final Fixes)  
+## 💳 PayTR Ödeme Entegrasyonu
+
+### Genel Bakış
+
+PayTR, Türkiye'nin önde gelen ödeme altyapı sağlayıcısıdır. Sistem, abonelik ödemelerini PayTR üzerinden alır ve otomatik plan aktivasyonu yapar.
+
+### PayTR Yapılandırması
+
+**Environment Variables:**
+```bash
+PAYTR_MERCHANT_ID=your_merchant_id
+PAYTR_MERCHANT_KEY=your_merchant_key
+PAYTR_MERCHANT_SALT=your_merchant_salt
+PAYTR_IFRAME_URL=https://www.paytr.com/odeme/guvenli/{token}
+```
+
+### Endpoint'ler
+
+#### `POST /api/subscription/paytr/initiate`
+**Açıklama:** PayTR ödeme iframe'i başlatır
+
+**Request Body:**
+```json
+{
+  "plan_id": "tier_1_standard",
+  "user_email": "user@example.com",
+  "user_name": "Ad Soyad",
+  "user_phone": "05001234567"
+}
+```
+
+**İşlemler:**
+
+1. **Plan Doğrulama:**
+   - Plan ID kontrolü
+   - Plan fiyatı ve detayları alınır
+
+2. **PayTR Token Oluşturma:**
+   - Merchant bilgileri ile hash oluşturulur
+   - PayTR API'ye token request gönderilir
+   - Hash hesaplama:
+     ```python
+     hash_str = f"{merchant_id}{user_ip}{merchant_oid}{email}{payment_amount}{payment_type}{installment_count}{currency}{test_mode}{non_3d}"
+     paytr_token = base64.b64encode(hmac.new(
+         merchant_key.encode(),
+         hash_str.encode(),
+         hashlib.sha256
+     ).digest()).decode()
+     ```
+
+3. **Ödeme Bilgileri:**
+   - `merchant_oid`: Unique order ID (UUID)
+   - `user_basket`: JSON formatında sepet bilgileri
+   - `callback_url`: PayTR'nin callback göndereceği URL
+   - `success_url`: Başarılı ödeme sonrası dönüş URL'i (frontend hash routing)
+   - `fail_url`: Başarısız ödeme sonrası dönüş URL'i
+
+**Response:**
+```json
+{
+  "status": "success",
+  "token": "paytr_iframe_token",
+  "iframe_url": "https://www.paytr.com/odeme/guvenli/paytr_iframe_token"
+}
+```
+
+**Frontend Kullanımı:**
+```javascript
+// Frontend PayTR iframe açar
+window.location.href = response.iframe_url;
+```
+
+---
+
+#### `POST /api/subscription/paytr/callback`
+**Açıklama:** PayTR ödeme sonucu callback'i (Webhook)
+
+**Request Body (PayTR'den gelir):**
+```
+merchant_oid=xxx&status=success&total_amount=520.00&hash=xxx&...
+```
+
+**İşlemler:**
+
+1. **Hash Doğrulama:**
+   - PayTR'den gelen hash doğrulanır
+   - Güvenlik için kritik
+   ```python
+   hash_str = f"{merchant_oid}{merchant_salt}{status}{total_amount}"
+   calculated_hash = base64.b64encode(
+       hmac.new(merchant_key.encode(), hash_str.encode(), hashlib.sha256).digest()
+   ).decode()
+   ```
+
+2. **Ödeme Durumu Kontrolü:**
+   - `status == "success"` ise ödeme başarılı
+   - Diğer durumlar: "failed", "pending"
+
+3. **Plan Aktivasyonu:**
+   - Organization plan'ı güncellenir
+   - `plan_id` değiştirilir
+   - `quota_limit` güncellenir
+   - `quota_usage` sıfırlanır
+   - `quota_reset_date` bir ay sonraya ayarlanır
+   - `is_first_month = True` yapılır
+
+4. **Transaction Kaydı:**
+   - `payment_transactions` collection'ına kayıt
+   - Ödeme detayları saklanır
+   - Audit log oluşturulur
+
+5. **PayTR'ye Cevap:**
+   - Başarılı: `OK` döner
+   - Hatalı: Error mesajı döner
+
+**Response:** 
+```
+OK
+```
+
+---
+
+#### `POST /api/subscription/paytr/check`
+**Açıklama:** Ödeme durumunu kontrol et (Frontend polling için)
+
+**Request Body:**
+```json
+{
+  "merchant_oid": "order_uuid"
+}
+```
+
+**İşlemler:**
+1. Transaction kaydı aranır
+2. Status döndürülür: "success", "failed", "pending"
+
+**Response:**
+```json
+{
+  "status": "success",
+  "plan_id": "tier_1_standard",
+  "message": "Ödeme başarılı"
+}
+```
+
+---
+
+### PayTR Akışı
+
+```
+1. Kullanıcı plan seçer (Frontend)
+   ↓
+2. POST /api/subscription/paytr/initiate
+   - Token oluşturulur
+   - Iframe URL döner
+   ↓
+3. Frontend PayTR iframe'ini açar
+   ↓
+4. Kullanıcı kredi kartı bilgilerini girer
+   ↓
+5. PayTR ödeme işler
+   ↓
+6. POST /api/subscription/paytr/callback (PayTR webhook)
+   - Hash doğrulanır
+   - Plan aktivasyonu yapılır
+   - Transaction kaydedilir
+   ↓
+7. PayTR kullanıcıyı success_url'e yönlendirir
+   ↓
+8. Frontend: "Ödeme Başarılı" mesajı gösterir
+   - Hash routing: /#/payment-success
+   - Toast notification
+   - Dashboard'a yönlendirir
+```
+
+---
+
+### Frontend Entegrasyonu
+
+#### URL Routing (AppRouter.js)
+
+**Problem:** PayTR callback sonrası `/dashboard` path'ine yönlendirme yapılıyordu ancak bu route tanımlı değildi → Beyaz ekran
+
+**Çözüm:**
+```javascript
+// /dashboard route eklendi
+<Route 
+  path="/dashboard" 
+  element={isAuthenticated ? <Navigate to="/" replace /> : <Navigate to="/login" replace />} 
+/>
+```
+
+#### Login Redirect (LoginPage.js)
+
+**Değişiklik:**
+```javascript
+// Önce
+window.location.href = '/dashboard';
+
+// Sonra
+window.location.href = '/';
+```
+
+#### Ödeme Başarı Yönetimi (App.js)
+
+**Hash Routing:**
+```javascript
+// PayTR başarılı ödeme sonrası: /#/payment-success
+if (hash === '#/payment-success' && userRole === 'admin') {
+  setCurrentView('dashboard');
+  setShowPaymentSuccess(true);
+  toast.success('🎉 Ödeme başarıyla tamamlandı!', {
+    duration: 8000,
+    position: 'top-center',
+  });
+}
+```
+
+**Query String Fallback:**
+```javascript
+// URL: /?payment=success
+const paymentStatus = urlParams.get('payment');
+if (paymentStatus === 'success' && userRole === 'admin') {
+  // Aynı success işlemleri
+}
+```
+
+**Success Banner:**
+```javascript
+{showPaymentSuccess && (
+  <div className="bg-gradient-to-r from-green-500 to-emerald-600">
+    <h3>🎉 Ödeme Başarılı!</h3>
+    <p>Aboneliğiniz başarıyla aktif edildi.</p>
+  </div>
+)}
+```
+
+---
+
+### Güvenlik Önlemleri
+
+1. **Hash Doğrulama:**
+   - Her PayTR callback'inde hash doğrulanır
+   - HMAC-SHA256 kullanılır
+   - Sahte callback'lere karşı koruma
+
+2. **Merchant Credentials:**
+   - Environment variables ile saklanır
+   - Asla frontend'e gönderilmez
+   - Production'da güvenli şekilde saklanmalı
+
+3. **Transaction Logging:**
+   - Tüm ödemeler audit log'a kaydedilir
+   - IP adresi, kullanıcı bilgileri saklanır
+   - Hata durumları loglanır
+
+4. **Rate Limiting:**
+   - Callback endpoint'i rate limit ile korunur
+   - DDoS saldırılarına karşı önlem
+
+---
+
+### Test Modu
+
+**PayTR Test Kartları:**
+```
+Kart No: 9792 0305 1008 7269
+Son Kullanma: 12/29
+CVV: 000
+3D Şifre: Herhangi bir şifre
+```
+
+**Test Mode Flag:**
+```python
+test_mode = "1"  # Production'da "0" yapılmalı
+```
+
+---
+
+### Hata Yönetimi
+
+**Callback Hataları:**
+- Hash uyuşmazlığı: `400 Bad Request`
+- Transaction kayıt hatası: Loglanır, PayTR'ye error döner
+- Plan aktivasyon hatası: Rollback yapılır
+
+**Frontend Hataları:**
+- Ödeme başarısız: `/payment-failed` sayfasına yönlendirir
+- Timeout: Polling ile status kontrol edilir
+- Network hatası: Kullanıcıya bilgi gösterilir
+
+---
+
+### Bug Fixes (2025-11-17)
+
+#### Dashboard Beyaz Ekran Sorunu
+
+**Problem:**
+- PayTR altyapısı ekledikten sonra login'den sonra beyaz ekran geliyordu
+- Console'da hiçbir log yoktu
+- Reason: `/dashboard` path'i tanımlı değildi
+
+**Root Cause Analysis:**
+1. `LoginPage.js`'de login başarılı olduktan sonra `window.location.href = '/dashboard'` yapılıyordu
+2. `AppRouter.js`'de sadece `/` ve diğer path'ler tanımlıydı
+3. `/dashboard` için route olmadığı için React Router hiçbir component render etmiyordu
+4. Sonuç: Beyaz ekran
+
+**Fix:**
+1. `/dashboard` route eklendi (authenticated users için `/`'e redirect)
+2. `LoginPage.js` redirect'i `/`'e değiştirildi
+3. Debug logları eklendi ve temizlendi
+4. Production build yapıldı
+5. Commit & push edildi (commit: `a0753be7`)
+
+**Değişiklikler:**
+- ✅ `AppRouter.js`: `/dashboard` route eklendi
+- ✅ `LoginPage.js`: Login redirect `/` olarak değiştirildi
+- ✅ Debug logları temizlendi (index.js, AuthContext.js, App.js, Dashboard.js)
+- ✅ Build: 356.44 kB gzip
+
+---
+
+**Dokümantasyon Tarihi:** 2025-11-17  
+**Versiyon:** 1.5.0 (PayTR Integration & Dashboard Fix)  
 **Dosya:** `/var/www/royalpremiumcare_dev/backend/server.py`
 
