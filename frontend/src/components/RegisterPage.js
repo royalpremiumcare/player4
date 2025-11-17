@@ -115,13 +115,32 @@ const RegisterPage = () => {
         password: '',
         full_name: '',
         organization_name: '',
-        support_phone: '',
+        support_phone: '+90',
         sector: ''
     });
     const [loading, setLoading] = useState(false);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+    
+    const handlePhoneChange = (e) => {
+        let value = e.target.value;
+        
+        // +90 prefix'i yoksa ekle
+        if (!value.startsWith('+90')) {
+            value = '+90' + value.replace(/^\+?90?/, '');
+        }
+        
+        // Sadece rakam ve + içeren değerlere izin ver
+        value = value.replace(/[^0-9+]/g, '');
+        
+        // +90'dan sonra maksimum 10 rakam
+        if (value.length > 13) {
+            value = value.substring(0, 13);
+        }
+        
+        setFormData({ ...formData, support_phone: value });
     };
 
     const handleRegister = async (e) => {
@@ -280,10 +299,12 @@ const RegisterPage = () => {
                                         name="support_phone"
                                         type="tel"
                                         value={formData.support_phone}
-                                        onChange={handleChange}
-                                        placeholder="05XXXXXXXXX"
+                                        onChange={handlePhoneChange}
+                                        placeholder="+905XXXXXXXXX"
                                         className="pl-10 h-12 border-2 focus:border-gray-900"
                                         required
+                                        minLength={13}
+                                        maxLength={13}
                                     />
                                 </div>
                             </div>

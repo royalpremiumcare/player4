@@ -23,6 +23,7 @@ import StaffManagement from "@/components/StaffManagement";
 import AuditLogs from "@/components/AuditLogs";
 import HelpCenter from "@/components/HelpCenter";
 import SuperAdmin from "@/components/SuperAdmin";
+import SetupWizard from "@/components/SetupWizard";
 import { Calendar, Briefcase, DollarSign, SettingsIcon, Users, Upload, LogOut, Moon, Sun, UserCog, FileText, Home, Plus, CreditCard, User, HelpCircle, Package, Bell } from "lucide-react";
 import { useTheme } from "./context/ThemeContext";
 import {
@@ -47,6 +48,8 @@ function App() {
   const [showForm, setShowForm] = useState(false);
   const [settings, setSettings] = useState(null);
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
 
   // URL routing - path'den view'ı oku ve URL değişikliklerini dinle
   useEffect(() => {
@@ -155,6 +158,31 @@ function App() {
     }
   }, []);
 
+  // Check if user needs onboarding
+  const checkOnboarding = useCallback(async () => {
+    if (userRole === 'admin') {
+      try {
+        const response = await api.get("/users");
+        const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+        if (authToken) {
+          const payload = JSON.parse(atob(authToken.split('.')[1]));
+          const username = payload.sub;
+          const user = response.data?.find(u => u.username === username);
+          
+          if (user) {
+            setCurrentUser(user);
+            // Admin ve onboarding tamamlanmamışsa sihirbazı göster
+            if (user.role === 'admin' && !user.onboarding_completed) {
+              setShowOnboarding(true);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Onboarding kontrolü yapılamadı:", error);
+      }
+    }
+  }, [userRole, token]);
+
   const loadServices = useCallback(async () => {
     try {
       const response = await api.get("/services"); 
@@ -188,10 +216,11 @@ function App() {
     loadServices();
     loadAppointments();
     loadSettings();
+    checkOnboarding();
     if (userRole === 'admin') {
       loadStats();
     }
-  }, [userRole, loadServices, loadAppointments, loadSettings, loadStats]); 
+  }, [userRole, loadServices, loadAppointments, loadSettings, loadStats, checkOnboarding]); 
 
 
   // WebSocket setup for real-time updates
@@ -401,6 +430,21 @@ function App() {
     <div className="App min-h-screen bg-white dark:bg-gray-900 transition-colors">
       <Toaster position="top-center" richColors />
 
+      {/* Setup Wizard - Onboarding */}
+      {showOnboarding && (
+        <SetupWizard
+          onComplete={() => {
+            setShowOnboarding(false);
+            // Verileri yeniden yükle
+            loadServices();
+            loadAppointments();
+            loadSettings();
+            if (userRole === 'admin') {
+              loadStats();
+            }
+          }}
+        />
+      )}
 
       {/* TopBar - Üst Navigasyon Barı */}
       {!showForm && (

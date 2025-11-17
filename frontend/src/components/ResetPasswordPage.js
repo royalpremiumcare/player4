@@ -17,6 +17,9 @@ const ResetPasswordPage = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // Personel daveti mi yoksa şifre sıfırlama mı?
+  const isStaffInvite = window.location.pathname === '/setup-password';
 
   // Sayfa yüklendiğinde en üste scroll et
   useEffect(() => {
@@ -48,7 +51,9 @@ const ResetPasswordPage = () => {
     setLoading(true);
 
     try {
-      await api.post('/reset-password', {
+      // Personel daveti için farklı endpoint kullan
+      const endpoint = isStaffInvite ? '/auth/setup-password' : '/reset-password';
+      await api.post(endpoint, {
         token: token,
         new_password: password
       });
@@ -73,10 +78,10 @@ const ResetPasswordPage = () => {
         <Card className="shadow-2xl border-0">
           <CardHeader className="space-y-1 pb-4 md:pb-6">
             <CardTitle className="text-2xl font-bold text-center text-gray-900">
-              Yeni Şifre Belirle
+              {isStaffInvite ? 'Şifre Belirle' : 'Yeni Şifre Belirle'}
             </CardTitle>
             <p className="text-center text-sm text-gray-600">
-              Yeni şifrenizi girin
+              {isStaffInvite ? 'Hesabınızı aktif etmek için şifrenizi belirleyin' : 'Yeni şifrenizi girin'}
             </p>
           </CardHeader>
           <CardContent className="px-4 md:px-6">
@@ -84,7 +89,9 @@ const ResetPasswordPage = () => {
               <div className="space-y-4">
                 <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded">
                   <p className="text-sm text-green-700">
-                    Şifreniz başarıyla sıfırlandı. Yeni şifrenizle giriş yapabilirsiniz.
+                    {isStaffInvite 
+                      ? 'Şifreniz başarıyla belirlendi. Şimdi giriş yapabilirsiniz.' 
+                      : 'Şifreniz başarıyla sıfırlandı. Yeni şifrenizle giriş yapabilirsiniz.'}
                   </p>
                 </div>
                 <Button
@@ -145,7 +152,9 @@ const ResetPasswordPage = () => {
                   className="w-full h-12 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-full shadow-lg transition-all duration-200" 
                   disabled={loading || !token}
                 >
-                  {loading ? 'Sıfırlanıyor...' : 'Şifreyi Sıfırla'}
+                  {loading 
+                    ? (isStaffInvite ? 'Belirleniyor...' : 'Sıfırlanıyor...') 
+                    : (isStaffInvite ? 'Şifreyi Belirle' : 'Şifreyi Sıfırla')}
                 </Button>
               </form>
             )}

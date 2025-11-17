@@ -184,11 +184,11 @@ const Calendar = ({ onEditAppointment, onNewAppointment }) => {
         startDate = format(currentDate, "yyyy-MM-dd");
         endDate = format(currentDate, "yyyy-MM-dd");
       } else if (viewMode === "week") {
-        const weekStart = startOfWeek(currentDate, { locale: tr });
-        const weekEnd = endOfWeek(currentDate, { locale: tr });
-        // Hafta sınırlarını genişlet - önceki ve sonraki haftalardan birkaç gün daha ekle
-        startDate = format(subDays(weekStart, 7), "yyyy-MM-dd");
-        endDate = format(addDays(weekEnd, 7), "yyyy-MM-dd");
+        // Hafta görünümünde biraz daha geniş aralık yükle (önceki ve sonraki hafta dahil)
+        const weekStart = startOfWeek(subDays(currentDate, 7), { locale: tr });
+        const weekEnd = endOfWeek(addDays(currentDate, 7), { locale: tr });
+        startDate = format(weekStart, "yyyy-MM-dd");
+        endDate = format(weekEnd, "yyyy-MM-dd");
       } else if (viewMode === "month") {
         const monthStart = startOfMonth(currentDate);
         const monthEnd = endOfMonth(currentDate);

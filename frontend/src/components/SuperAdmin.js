@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Building2, DollarSign, Calendar, Users, Search, ArrowUpDown, ArrowUp, ArrowDown, Phone, Mail, MessageSquare, Clock, CheckCircle2, MessageCircle, Trash2, Trash } from "lucide-react";
+import { Building2, DollarSign, Calendar, Users, Search, ArrowUpDown, ArrowUp, ArrowDown, Phone, Mail, MessageSquare, Clock, CheckCircle2, MessageCircle, Trash2, Trash, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import api from "../api/api";
@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-const SuperAdmin = () => {
+const SuperAdmin = ({ onNavigate }) => {
   const [stats, setStats] = useState(null);
   const [organizations, setOrganizations] = useState([]);
   const [contactRequests, setContactRequests] = useState([]);
@@ -251,6 +251,16 @@ const SuperAdmin = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
+          <div className="flex items-center gap-4 mb-4">
+            <Button
+              onClick={() => onNavigate && onNavigate('dashboard')}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Geri
+            </Button>
+          </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Super Admin Paneli</h1>
           <p className="text-gray-600">Platform genelinde tüm işletmelerin özet bilgileri</p>
         </div>

@@ -54,7 +54,7 @@ const AppRouter = () => {
       />
       <Route 
         path="/setup-password" 
-        element={<SetupPassword />} 
+        element={<ResetPasswordPage />} 
       />
       
       {/* Subscribe Route - PayTR redirect için */}

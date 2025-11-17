@@ -1261,9 +1261,12 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred during login. Please try again later.")
 
 # === E-POSTA GÖNDERME FONKSİYONLARI ===
-async def send_personnel_invitation_email(user_email: str, user_name: str, organization_name: str, invitation_link: str):
+async def send_personnel_invitation_email(recipient_email: str, recipient_name: str, admin_name: str, organization_name: str, invitation_token: str):
     """Personel davet e-postası gönderir."""
     try:
+        # Invitation link oluştur (setup-password route'u kullan)
+        invitation_link = f"https://dev.royalpremiumcare.com/setup-password?token={invitation_token}"
+        
         logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
         subject = "PLANN Davetiyesi: Hesabınızı Oluşturun"
         html_content = f"""
@@ -1281,8 +1284,8 @@ async def send_personnel_invitation_email(user_email: str, user_name: str, organ
                             <tr style="background-color: #ffffff;">
                                 <td style="padding: 40px 30px; color: #333333; font-size: 16px;">
                                     <h1 style="font-size: 24px; color: #111111; margin-top: 0; text-align: center;">PLANN Davetiyesi</h1>
-                                    <p>Merhaba {user_name},</p>
-                                    <p><strong>{organization_name}</strong> sizi PLANN randevu sistemine personel olarak ekledi.</p>
+                                    <p>Merhaba {recipient_name},</p>
+                                    <p><strong>{admin_name}</strong> sizi <strong>{organization_name}</strong> işletmesinin PLANN randevu sistemine personel olarak ekledi.</p>
                                     <p>Hesabınızı aktif etmek ve şifrenizi belirlemek için lütfen aşağıdaki butona tıklayın.</p>
                                 </td>
                             </tr>
@@ -1306,14 +1309,25 @@ async def send_personnel_invitation_email(user_email: str, user_name: str, organ
         </html>
         """
         
-        return await send_email(
-            to_email=user_email,
+        logging.info(f"📧 Personel davet e-postası gönderiliyor: {recipient_email} (Token: {invitation_token[:8]}...)")
+        
+        result = await send_email(
+            to_email=recipient_email,
             subject=subject,
             html_content=html_content,
-            to_name=user_name
+            to_name=recipient_name
         )
+        
+        if result:
+            logging.info(f"✅ Personel davet e-postası başarıyla gönderildi: {recipient_email}")
+        else:
+            logging.error(f"❌ Personel davet e-postası gönderilemedi: {recipient_email}")
+        
+        return result
     except Exception as e:
-        logging.error(f"E-posta gönderme sırasında beklenmedik hata: {e}")
+        logging.error(f"❌ E-posta gönderme sırasında beklenmedik hata: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return False
 
 async def send_password_reset_email(user_email: str, user_name: str, reset_link: str):
@@ -2964,9 +2978,19 @@ async def handle_paytr_webhook(request: Request):
 
 @api_router.get("/stats/dashboard")
 async def get_dashboard_stats(request: Request, current_user: UserInDB = Depends(get_current_user)):
-    # Sadece admin görebilir
-    if current_user.role != "admin":
+    # Sadece admin ve superadmin görebilir
+    if current_user.role not in ["admin", "superadmin"]:
         raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+    
+    # SuperAdmin için özel response döndür
+    if current_user.role == "superadmin":
+        return {
+            "bugunku_randevular": 0,
+            "bugunku_tamamlanan": 0,
+            "bugunku_gelir": 0,
+            "bu_ayki_gelir": 0,
+            "quota": None  # SuperAdmin için kota yok
+        }
     
     logger.info(f"📊 Stats endpoint çağrıldı - Organization: {current_user.organization_id}")
     db = await get_db_from_request(request); turkey_tz = ZoneInfo("Europe/Istanbul"); today = datetime.now(turkey_tz).date().isoformat(); now = datetime.now(turkey_tz)
@@ -3245,13 +3269,241 @@ async def update_settings(request: Request, settings: Settings, current_user: Us
     
     return Settings(**updated_settings)
 
-@api_router.post("/onboarding/complete")
-async def complete_onboarding(request: Request, current_user: UserInDB = Depends(get_current_user)):
-    """Onboarding sihirbazını tamamla"""
+# === ONBOARDING ENDPOINTS ===
+@api_router.get("/onboarding/info")
+async def get_onboarding_info(request: Request, current_user: UserInDB = Depends(get_current_user)):
+    """Onboarding için gerekli bilgileri döndürür (sector, default services, vb.)"""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
     
     db = await get_db_from_request(request)
+    
+    # Settings'den sector bilgisini al
+    settings = await db.settings.find_one({"organization_id": current_user.organization_id}, {"_id": 0})
+    sector = settings.get("sector") if settings else None
+    
+    # Mevcut hizmetleri al
+    services = await db.services.find(
+        {"organization_id": current_user.organization_id}
+    ).to_list(100)
+    
+    # Services'i temizle
+    services_clean = []
+    for service in services:
+        services_clean.append({
+            "id": service.get("id"),
+            "name": service.get("name"),
+            "price": service.get("price", 0),
+            "duration": service.get("duration", 30)
+        })
+    
+    # Sector bazlı default hizmet önerileri (frontend için)
+    sector_defaults = {
+        "Kuaför": [
+            {"name": "Saç Kesimi", "price": 0, "duration": 30},
+            {"name": "Saç Boyama", "price": 0, "duration": 60},
+            {"name": "Sakal Traşı", "price": 0, "duration": 20}
+        ],
+        "Güzellik Salonu": [
+            {"name": "Manikür", "price": 0, "duration": 30},
+            {"name": "Pedikür", "price": 0, "duration": 40},
+            {"name": "Cilt Bakımı", "price": 0, "duration": 60}
+        ],
+        "Masaj / SPA": [
+            {"name": "Klasik Masaj", "price": 0, "duration": 60},
+            {"name": "Aromaterapi Masajı", "price": 0, "duration": 90},
+            {"name": "İsveç Masajı", "price": 0, "duration": 60}
+        ],
+        "Diyetisyen": [
+            {"name": "İlk Danışma", "price": 0, "duration": 45},
+            {"name": "Kontrol Muayenesi", "price": 0, "duration": 30},
+            {"name": "Diyet Planı", "price": 0, "duration": 60}
+        ],
+        "Psikolog / Danışmanlık": [
+            {"name": "Bireysel Terapi", "price": 0, "duration": 60},
+            {"name": "Çift Terapisi", "price": 0, "duration": 90},
+            {"name": "Aile Danışmanlığı", "price": 0, "duration": 90}
+        ],
+        "Diş Klinikleri": [
+            {"name": "Muayene", "price": 0, "duration": 30},
+            {"name": "Dolgu", "price": 0, "duration": 45},
+            {"name": "Diş Temizliği", "price": 0, "duration": 40}
+        ],
+    }
+    
+    default_services = sector_defaults.get(sector, [])
+    
+    return {
+        "user": {
+            "username": current_user.username,
+            "full_name": current_user.full_name,
+            "onboarding_completed": current_user.onboarding_completed
+        },
+        "sector": sector,
+        "existing_services": services_clean,
+        "default_services": default_services,
+        "business_hours": settings.get("business_hours") if settings else {}
+    }
+
+class OnboardingServiceUpdate(BaseModel):
+    services: List[dict]  # [{"id": "...", "price": 100, "duration": 30}, ...]
+
+@api_router.post("/onboarding/update-services")
+async def update_onboarding_services(request: Request, data: OnboardingServiceUpdate, current_user: UserInDB = Depends(get_current_user)):
+    """Onboarding sırasında hizmetlerin fiyat ve sürelerini güncelle"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+    
+    db = await get_db_from_request(request)
+    
+    updated_services = []
+    for service_data in data.services:
+        service_id = service_data.get("id")
+        price = service_data.get("price", 0)
+        duration = service_data.get("duration", 30)
+        
+        if service_id:
+            # Mevcut hizmeti güncelle
+            result = await db.services.update_one(
+                {"id": service_id, "organization_id": current_user.organization_id},
+                {"$set": {"price": price, "duration": duration}}
+            )
+            
+            if result.modified_count > 0:
+                updated_service = await db.services.find_one(
+                    {"id": service_id, "organization_id": current_user.organization_id},
+                    {"_id": 0}
+                )
+                updated_services.append(updated_service)
+    
+    return {"message": f"{len(updated_services)} hizmet güncellendi", "services": updated_services}
+
+class OnboardingNewService(BaseModel):
+    name: str
+    price: float
+    duration: int
+
+@api_router.post("/onboarding/add-service")
+async def add_onboarding_service(request: Request, data: OnboardingNewService, current_user: UserInDB = Depends(get_current_user)):
+    """Onboarding sırasında yeni hizmet ekle"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+    
+    db = await get_db_from_request(request)
+    
+    service_id = str(uuid.uuid4())
+    new_service = Service(
+        id=service_id,
+        name=data.name,
+        price=data.price,
+        duration=data.duration,
+        organization_id=current_user.organization_id
+    )
+    
+    await db.services.insert_one(new_service.model_dump())
+    
+    return {"message": "Hizmet eklendi", "service": new_service.model_dump()}
+
+class OnboardingHoursUpdate(BaseModel):
+    business_hours: dict
+
+@api_router.post("/onboarding/update-hours")
+async def update_onboarding_hours(request: Request, data: OnboardingHoursUpdate, current_user: UserInDB = Depends(get_current_user)):
+    """Onboarding sırasında çalışma saatlerini güncelle"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+    
+    db = await get_db_from_request(request)
+    
+    await db.settings.update_one(
+        {"organization_id": current_user.organization_id},
+        {"$set": {"business_hours": data.business_hours}},
+        upsert=True
+    )
+    
+    return {"message": "Çalışma saatleri güncellendi", "business_hours": data.business_hours}
+
+class OnboardingComplete(BaseModel):
+    admin_days_off: Optional[List[str]] = []
+    staff_invites: Optional[List[dict]] = []  # [{"username": "...", "full_name": "...", "phone": "..."}]
+
+@api_router.post("/onboarding/complete")
+async def complete_onboarding(request: Request, data: OnboardingComplete, current_user: UserInDB = Depends(get_current_user)):
+    """Onboarding sihirbazını tamamla - Admin'in tatil günlerini ayarla ve personel davet et"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+    
+    db = await get_db_from_request(request)
+    
+    # Admin'in tatil günlerini güncelle
+    if data.admin_days_off is not None:
+        await db.users.update_one(
+            {"username": current_user.username},
+            {"$set": {"days_off": data.admin_days_off}}
+        )
+    
+    # Personel davetlerini gönder (eğer varsa)
+    invited_staff = []
+    if data.staff_invites:
+        # Organization name'i settings'den al
+        org_settings = await db.settings.find_one({"organization_id": current_user.organization_id})
+        organization_name = org_settings.get("company_name", "İşletme") if org_settings else "İşletme"
+        
+        # Admin'in tatil günlerini al (personele de aynısı uygulanacak)
+        admin_days_off = data.admin_days_off if data.admin_days_off is not None else []
+        
+        for staff_data in data.staff_invites:
+            username = staff_data.get("username")
+            full_name = staff_data.get("full_name")
+            
+            # Kullanıcı zaten var mı kontrol et
+            existing_user = await db.users.find_one({"username": username})
+            if existing_user:
+                logging.warning(f"⚠️ Kullanıcı zaten mevcut: {username}")
+                invited_staff.append({"username": username, "full_name": full_name, "status": "already_exists"})
+                continue
+            
+            # Davet token'ı oluştur
+            invitation_token = str(uuid.uuid4())
+            
+            # Staff için unique slug oluştur (username'den)
+            staff_slug = username.split('@')[0] + '-' + str(uuid.uuid4())[:8]
+            
+            # Yeni staff kullanıcısı oluştur - Admin'in tatil günleriyle
+            staff_user = UserInDB(
+                username=username,
+                full_name=full_name,
+                organization_id=current_user.organization_id,
+                role="staff",
+                slug=staff_slug,  # Unique slug ekle
+                status="pending",
+                invitation_token=invitation_token,
+                days_off=admin_days_off,  # Admin'in tatil günlerini uygula
+                hashed_password=None  # Şifre davet linkinden belirlenecek
+            )
+            
+            await db.users.insert_one(staff_user.model_dump())
+            logging.info(f"✅ Staff kullanıcısı oluşturuldu: {username}")
+            
+            # Davet e-postası gönder
+            try:
+                result = await send_personnel_invitation_email(
+                    recipient_email=username,
+                    recipient_name=full_name,
+                    admin_name=current_user.full_name or current_user.username,
+                    organization_name=organization_name,
+                    invitation_token=invitation_token
+                )
+                
+                if result:
+                    invited_staff.append({"username": username, "full_name": full_name, "status": "invited"})
+                else:
+                    invited_staff.append({"username": username, "full_name": full_name, "status": "email_failed"})
+            except Exception as e:
+                logging.error(f"❌ Davet e-postası gönderilemedi ({username}): {e}")
+                import traceback
+                logging.error(traceback.format_exc())
+                invited_staff.append({"username": username, "full_name": full_name, "status": "email_failed"})
     
     # Kullanıcının onboarding_completed flag'ini True yap
     await db.users.update_one(
@@ -3273,7 +3525,12 @@ async def complete_onboarding(request: Request, current_user: UserInDB = Depends
         ip_address=request.client.host if request.client else None
     )
     
-    return {"message": "Onboarding tamamlandı", "onboarding_completed": True}
+    return {
+        "message": "Onboarding tamamlandı",
+        "onboarding_completed": True,
+        "admin_days_off": data.admin_days_off,
+        "invited_staff": invited_staff
+    }
 
 @api_router.post("/settings/logo")
 async def upload_logo(request: Request, file: UploadFile = File(...), current_user: UserInDB = Depends(get_current_user)):
