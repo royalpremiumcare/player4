@@ -22,15 +22,6 @@ const AlertDialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
 AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName
 
 const AlertDialogContent = React.forwardRef(({ className, ...props }, ref) => {
-  // Body scroll lock için effect
-  React.useEffect(() => {
-    const originalStyle = window.getComputedStyle(document.body).overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = originalStyle;
-    };
-  }, []);
-
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
