@@ -94,11 +94,11 @@ def rate_limit(times: str = "10/minute", per_method: bool = True):
 
 # Common rate limit configurations
 LIMITS = {
-    'login': "20/minute",         # 5'ten 20'ye artırıldı
-    'register': "30/hour",        # 10'dan 30'a artırıldı
-    'forgot_password': "15/hour", # 5'ten 15'e artırıldı
-    'reset_password': "15/hour",  # 5'ten 15'e artırıldı
-    'api': "200/minute",          # 100'den 200'e artırıldı
-    'stats': "50/minute",         # 20'den 50'ye artırıldı
-    'sms': "200/hour",            # 100'den 200'e artırıldı
+    'login': "5/minute",
+    'register': "10/hour",
+    'forgot_password': "3/hour",
+    'reset_password': "3/hour",
+    'api': "100/minute",
+    'stats': "20/minute",
+    'sms': "100/hour",
 }
