@@ -250,6 +250,183 @@ async def check_and_send_reminders():
     except Exception as e:
         logging.error(f"Error in check_and_send_reminders: {e}", exc_info=True)
 
+# === Recurring Payment Checker (Her gün çalışır) ===
+async def check_and_process_recurring_payments():
+    """Vadesi gelen recurring payment'leri işle"""
+    try:
+        logging.info("=== Recurring Payment Check Started ===")
+        
+        if not _app_instance or not _app_instance.db:
+            logging.warning("Database not available for recurring payment check")
+            return
+        
+        db = _app_instance.db
+        today = datetime.now(timezone.utc).date()
+        today_str = today.isoformat()
+        
+        # Bugün ödeme günü olan organizasyonları bul
+        cursor = db.organization_plans.find({
+            "card_saved": True,
+            "next_billing_date": {"$lte": datetime.now(timezone.utc).isoformat()},
+            "plan_id": {"$ne": "tier_trial"}  # Trial paketleri hariç
+        })
+        
+        organizations = await cursor.to_list(length=1000)
+        logging.info(f"Found {len(organizations)} organizations with due payments")
+        
+        for org_plan in organizations:
+            organization_id = org_plan.get('organization_id')
+            plan_id = org_plan.get('plan_id')
+            
+            try:
+                logging.info(f"Processing recurring payment for organization: {organization_id}, plan: {plan_id}")
+                
+                # Ödeme çek (internal API call simulation)
+                # Gerçek implementasyonda recurring payment endpoint'ini çağır
+                utoken = org_plan.get('payment_utoken')
+                ctoken = org_plan.get('payment_ctoken')
+                
+                if not utoken or not ctoken:
+                    logging.error(f"Missing payment tokens for organization: {organization_id}")
+                    continue
+                
+                # Plan bilgilerini al
+                plan_info = await get_plan_info(plan_id)
+                if not plan_info:
+                    logging.error(f"Plan info not found: {plan_id}")
+                    continue
+                
+                price_monthly = plan_info.get('price_monthly', 0)
+                payment_amount_kurus = int(price_monthly * 100)
+                
+                # Organization admin'ini bul
+                user = await db.users.find_one({"organization_id": organization_id, "role": "admin"})
+                if not user:
+                    logging.error(f"Admin user not found for organization: {organization_id}")
+                    continue
+                
+                user_email = user.get('username', 'noreply@royalpremiumcare.com')
+                user_name = user.get('full_name', 'Kullanıcı')
+                
+                # Settings'den bilgi al
+                settings = await db.settings.find_one({"organization_id": organization_id})
+                user_address = settings.get('address', 'Adres Bilgisi Yok') if settings else 'Adres Bilgisi Yok'
+                user_phone = settings.get('support_phone', '05000000000') if settings else '05000000000'
+                
+                # Merchant OID oluştur
+                org_id_clean = organization_id.replace('-', '')
+                timestamp_str = str(int(datetime.now(timezone.utc).timestamp()))
+                merchant_oid = f"AUTO{org_id_clean}{timestamp_str}"
+                
+                # Sepet bilgisi
+                plan_name = plan_info.get('name', 'Plan')
+                user_basket = base64.b64encode(json.dumps([
+                    [plan_name, str(price_monthly), 1]
+                ]).encode('utf-8')).decode('utf-8')
+                
+                # PayTR parametreleri
+                user_ip = "127.0.0.1"  # Sistem iç çağrısı
+                payment_type = 'card'
+                currency = 'TL'
+                test_mode = '0'
+                non_3d = '1'
+                
+                # Hash oluştur
+                hash_str = f"{PAYTR_MERCHANT_ID}{user_ip}{merchant_oid}{user_email}{payment_amount_kurus}{payment_type}0{currency}{test_mode}{non_3d}"
+                paytr_token = base64.b64encode(hmac.new(
+                    PAYTR_MERCHANT_KEY.encode('utf-8'), 
+                    hash_str.encode('utf-8') + PAYTR_MERCHANT_SALT.encode('utf-8'), 
+                    hashlib.sha256
+                ).digest()).decode('utf-8')
+                
+                # PayTR'a istek gönder
+                post_data = {
+                    'merchant_id': PAYTR_MERCHANT_ID,
+                    'user_ip': user_ip,
+                    'merchant_oid': merchant_oid,
+                    'email': user_email,
+                    'payment_type': payment_type,
+                    'payment_amount': payment_amount_kurus,
+                    'currency': currency,
+                    'test_mode': test_mode,
+                    'non_3d': non_3d,
+                    'merchant_ok_url': PAYTR_SUCCESS_URL,
+                    'merchant_fail_url': PAYTR_FAIL_URL,
+                    'user_name': user_name,
+                    'user_address': user_address[:400],
+                    'user_phone': user_phone[:20],
+                    'user_basket': user_basket,
+                    'debug_on': '1',
+                    'paytr_token': paytr_token,
+                    'utoken': utoken,
+                    'ctoken': ctoken,
+                    'installment_count': '0'
+                }
+                
+                # Payment log oluştur
+                payment_log = {
+                    "merchant_oid": merchant_oid,
+                    "organization_id": organization_id,
+                    "plan_id": plan_id,
+                    "amount": price_monthly,
+                    "status": "pending",
+                    "payment_type": "auto_recurring",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db.payment_logs.insert_one(payment_log)
+                
+                # PayTR'a istek gönder
+                response = requests.post("https://www.paytr.com/odeme", data=post_data, timeout=15)
+                
+                if response.status_code == 200:
+                    res_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                    
+                    if res_data.get('status') == 'success':
+                        logging.info(f"✓ Auto recurring payment successful for organization: {organization_id}")
+                        
+                        # Bir sonraki ödeme tarihini güncelle (30 gün sonra)
+                        next_billing = datetime.now(timezone.utc) + timedelta(days=30)
+                        await db.organization_plans.update_one(
+                            {"organization_id": organization_id},
+                            {"$set": {
+                                "next_billing_date": next_billing.isoformat(),
+                                "last_payment_date": datetime.now(timezone.utc).isoformat(),
+                                "updated_at": datetime.now(timezone.utc).isoformat()
+                            }}
+                        )
+                    else:
+                        error_msg = res_data.get('reason', 'Bilinmeyen hata')
+                        logging.error(f"✗ Auto recurring payment failed for {organization_id}: {error_msg}")
+                        
+                        # Başarısız ödeme kaydını güncelle
+                        await db.payment_logs.update_one(
+                            {"merchant_oid": merchant_oid},
+                            {"$set": {"status": "failed", "failed_reason": error_msg}}
+                        )
+                        
+                        # Retry için 3 gün sonraya ertele
+                        retry_date = datetime.now(timezone.utc) + timedelta(days=3)
+                        await db.organization_plans.update_one(
+                            {"organization_id": organization_id},
+                            {"$set": {
+                                "next_billing_date": retry_date.isoformat(),
+                                "payment_retry_count": org_plan.get('payment_retry_count', 0) + 1,
+                                "last_payment_attempt": datetime.now(timezone.utc).isoformat()
+                            }}
+                        )
+                        
+                        # TODO: Admin'e e-posta gönder
+                else:
+                    logging.error(f"✗ PayTR HTTP error for {organization_id}: {response.status_code}")
+                
+            except Exception as e:
+                logging.error(f"Error processing recurring payment for {organization_id}: {e}", exc_info=True)
+        
+        logging.info("=== Recurring Payment Check Completed ===")
+    
+    except Exception as e:
+        logging.error(f"Error in check_and_process_recurring_payments: {e}", exc_info=True)
+
 # === MongoDB ve Redis Yaşam Döngüsü (Lifespan) --- SYNTAX HATASI DÜZELTİLDİ ===
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -284,8 +461,8 @@ async def lifespan(app: FastAPI):
         logging.warning(f"WARNING during Rate Limiter initialization: {type(e).__name__}: {str(e)}"); app.state.limiter = None
     
     try:
-        logging.info("Step 4: Starting SMS Reminder Scheduler...")
-        # Async fonksiyon için doğru trigger kullan
+        logging.info("Step 4: Starting Schedulers...")
+        # SMS Reminder Job - Her 5 dakikada bir
         scheduler.add_job(
             check_and_send_reminders, 
             IntervalTrigger(minutes=5), 
@@ -293,8 +470,22 @@ async def lifespan(app: FastAPI):
             replace_existing=True,
             max_instances=1  # Aynı anda sadece bir instance çalışsın
         )
+        
+        # Recurring Payment Job - Her gün saat 02:00'de (UTC)
+        from apscheduler.triggers.cron import CronTrigger
+        scheduler.add_job(
+            check_and_process_recurring_payments,
+            CronTrigger(hour=2, minute=0),  # Her gün 02:00
+            id='recurring_payment_job',
+            replace_existing=True,
+            max_instances=1
+        )
+        
         scheduler.start()
-        logging.info("Step 4 SUCCESS: SMS Reminder Scheduler started (runs every 5 minutes)")
+        logging.info("Step 4 SUCCESS: Schedulers started")
+        logging.info("  - SMS Reminder: Every 5 minutes")
+        logging.info("  - Recurring Payments: Daily at 02:00 UTC")
+        
         # İlk kontrolü hemen yap (test için)
         import asyncio
         asyncio.create_task(check_and_send_reminders())
@@ -2697,10 +2888,11 @@ async def create_checkout_session(
         test_mode = '0'  # Production mode (1 = test mode)
         debug_on = '1'  # Debug açık
         timeout_limit = '30'  # Timeout süresi (dakika)
+        store_card = '1'  # Kart tokenize et (recurring payment için)
         
         # 8. PAYTR TOKEN (HASH) OLUŞTURMA
-        # Doğru sıra: merchant_id + user_ip + merchant_oid + email + payment_amount + user_basket + no_installment + max_installment + currency + test_mode
-        hash_str = f"{PAYTR_MERCHANT_ID}{user_ip}{merchant_oid}{user_email}{payment_amount_kurus}{user_basket}{no_installment}{max_installment}{currency}{test_mode}"
+        # Doğru sıra: merchant_id + user_ip + merchant_oid + email + payment_amount + user_basket + no_installment + max_installment + currency + test_mode + store_card
+        hash_str = f"{PAYTR_MERCHANT_ID}{user_ip}{merchant_oid}{user_email}{payment_amount_kurus}{user_basket}{no_installment}{max_installment}{currency}{test_mode}{store_card}"
         
         paytr_token = base64.b64encode(hmac.new(
             PAYTR_MERCHANT_KEY.encode('utf-8'), 
@@ -2729,7 +2921,8 @@ async def create_checkout_session(
             'merchant_fail_url': PAYTR_FAIL_URL,
             'timeout_limit': timeout_limit,
             'currency': currency,
-            'test_mode': test_mode
+            'test_mode': test_mode,
+            'store_card': store_card  # Kart saklama
         }
         
         # PayTR için kritik alanları logla
@@ -2938,6 +3131,17 @@ async def handle_paytr_webhook(request: Request):
             update_data['trial_start_date'] = None
             update_data['trial_end_date'] = None
             
+            # Recurring payment için kart token bilgilerini kaydet
+            utoken = form_data.get('utoken')
+            ctoken = form_data.get('ctoken')
+            if utoken and ctoken:
+                update_data['payment_utoken'] = utoken
+                update_data['payment_ctoken'] = ctoken
+                update_data['card_saved'] = True
+                update_data['card_saved_at'] = datetime.now(timezone.utc).isoformat()
+                update_data['next_billing_date'] = quota_reset.isoformat()  # Bir sonraki otomatik ödeme tarihi
+                logger.info(f"Kart token bilgileri kaydedildi: organization_id={organization_id}, utoken={utoken[:10]}...")
+            
             await db.organization_plans.update_one(
                 {"organization_id": organization_id},
                 {"$set": update_data}
@@ -2975,6 +3179,152 @@ async def handle_paytr_webhook(request: Request):
     except Exception as e:
         logger.error(f"PayTR webhook işleme hatası: {e}", exc_info=True)
         return Response(content="ERROR", status_code=500)
+
+@api_router.post("/payments/process-recurring")
+async def process_recurring_payment(request: Request, organization_id: str, current_user: UserInDB = Depends(get_current_user)):
+    """Kayıtlı kart ile recurring payment çek (Internal API - Cron job için)"""
+    try:
+        # Sadece superadmin veya sistem çağrısı yapabilir
+        if current_user.role != "superadmin":
+            raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
+        
+        db = await get_db_from_request(request)
+        
+        # Organization plan bilgilerini al
+        plan_doc = await get_organization_plan(db, organization_id)
+        if not plan_doc:
+            logger.error(f"Recurring payment: Plan bulunamadı - organization_id={organization_id}")
+            return {"status": "error", "message": "Plan bulunamadı"}
+        
+        # Kart token bilgilerini kontrol et
+        if not plan_doc.get('card_saved') or not plan_doc.get('payment_utoken') or not plan_doc.get('payment_ctoken'):
+            logger.warning(f"Recurring payment: Kayıtlı kart yok - organization_id={organization_id}")
+            return {"status": "error", "message": "Kayıtlı kart bulunamadı"}
+        
+        utoken = plan_doc.get('payment_utoken')
+        ctoken = plan_doc.get('payment_ctoken')
+        plan_id = plan_doc.get('plan_id')
+        
+        # Plan bilgilerini al
+        plan_info = await get_plan_info(plan_id)
+        if not plan_info:
+            logger.error(f"Recurring payment: Plan info bulunamadı - plan_id={plan_id}")
+            return {"status": "error", "message": "Plan bilgisi bulunamadı"}
+        
+        # Ödeme tutarı (recurring'de indirim yok)
+        price_monthly = plan_info.get('price_monthly', 0)
+        payment_amount_kurus = int(price_monthly * 100)
+        
+        # Organization bilgilerini al
+        user = await db.users.find_one({"organization_id": organization_id, "role": "admin"})
+        if not user:
+            logger.error(f"Recurring payment: Admin user bulunamadı - organization_id={organization_id}")
+            return {"status": "error", "message": "Admin kullanıcı bulunamadı"}
+        
+        user_email = user.get('username', 'noreply@royalpremiumcare.com')
+        user_name = user.get('full_name', 'Kullanıcı')
+        
+        # Settings'den adres ve telefon al
+        settings = await db.settings.find_one({"organization_id": organization_id})
+        user_address = settings.get('address', 'Adres Bilgisi Yok') if settings else 'Adres Bilgisi Yok'
+        user_phone = settings.get('support_phone', '05000000000') if settings else '05000000000'
+        
+        # Merchant OID oluştur
+        org_id_clean = organization_id.replace('-', '')
+        timestamp_str = str(int(datetime.now(timezone.utc).timestamp()))
+        merchant_oid = f"RECUR{org_id_clean}{timestamp_str}"
+        
+        # User IP (sistem iç çağrısı için)
+        user_ip = request.client.host if request.client else "127.0.0.1"
+        
+        # Sepet bilgisi
+        plan_name = plan_info.get('name', 'Plan')
+        user_basket = base64.b64encode(json.dumps([
+            [plan_name, str(price_monthly), 1]
+        ]).encode('utf-8')).decode('utf-8')
+        
+        # PayTR parametreleri
+        no_installment = '1'
+        max_installment = '0'
+        currency = 'TL'
+        test_mode = '0'
+        non_3d = '1'  # Recurring payment için Non-3D zorunlu
+        payment_type = 'card'
+        
+        # Hash oluştur (recurring payment için farklı sıra)
+        hash_str = f"{PAYTR_MERCHANT_ID}{user_ip}{merchant_oid}{user_email}{payment_amount_kurus}{payment_type}0{currency}{test_mode}{non_3d}"
+        paytr_token = base64.b64encode(hmac.new(
+            PAYTR_MERCHANT_KEY.encode('utf-8'), 
+            hash_str.encode('utf-8') + PAYTR_MERCHANT_SALT.encode('utf-8'), 
+            hashlib.sha256
+        ).digest()).decode('utf-8')
+        
+        # PayTR API'sine recurring payment isteği gönder
+        post_data = {
+            'merchant_id': PAYTR_MERCHANT_ID,
+            'user_ip': user_ip,
+            'merchant_oid': merchant_oid,
+            'email': user_email,
+            'payment_type': payment_type,
+            'payment_amount': payment_amount_kurus,
+            'currency': currency,
+            'test_mode': test_mode,
+            'non_3d': non_3d,
+            'merchant_ok_url': PAYTR_SUCCESS_URL,
+            'merchant_fail_url': PAYTR_FAIL_URL,
+            'user_name': user_name,
+            'user_address': user_address[:400],
+            'user_phone': user_phone[:20],
+            'user_basket': user_basket,
+            'debug_on': '1',
+            'paytr_token': paytr_token,
+            'utoken': utoken,
+            'ctoken': ctoken,
+            'installment_count': '0'
+        }
+        
+        # Payment log oluştur
+        payment_log = {
+            "merchant_oid": merchant_oid,
+            "organization_id": organization_id,
+            "plan_id": plan_id,
+            "amount": price_monthly,
+            "status": "pending",
+            "payment_type": "recurring",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.payment_logs.insert_one(payment_log)
+        
+        # PayTR'a istek gönder
+        logger.info(f"Recurring payment başlatılıyor: organization_id={organization_id}, merchant_oid={merchant_oid}")
+        response = requests.post("https://www.paytr.com/odeme", data=post_data, timeout=15)
+        
+        logger.info(f"PayTR recurring response: {response.status_code} - {response.text}")
+        
+        if response.status_code == 200:
+            res_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+            
+            if res_data.get('status') == 'success':
+                logger.info(f"Recurring payment başarılı: organization_id={organization_id}")
+                return {"status": "success", "message": "Ödeme başarılı", "merchant_oid": merchant_oid}
+            else:
+                error_msg = res_data.get('reason', 'Bilinmeyen hata')
+                logger.error(f"Recurring payment başarısız: {error_msg}")
+                
+                # Başarısız ödeme kaydını güncelle
+                await db.payment_logs.update_one(
+                    {"merchant_oid": merchant_oid},
+                    {"$set": {"status": "failed", "failed_reason": error_msg}}
+                )
+                
+                return {"status": "failed", "message": error_msg}
+        else:
+            logger.error(f"PayTR recurring HTTP hatası: {response.status_code}")
+            return {"status": "error", "message": "Ödeme servisi hatası"}
+            
+    except Exception as e:
+        logger.error(f"Recurring payment işleme hatası: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
 
 @api_router.get("/stats/dashboard")
 async def get_dashboard_stats(request: Request, current_user: UserInDB = Depends(get_current_user)):
