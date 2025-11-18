@@ -882,8 +882,21 @@ const LandingPage = () => {
             <div>
               <h4 className="font-bold text-gray-900 mb-4">İletişim</h4>
               <ul className="space-y-2 text-sm text-gray-600">
-                <li>E-posta: info@plann.co</li>
-                <li>Tel: 0XXX XXX XX XX</li>
+                <li className="flex items-start gap-2">
+                  <Phone className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>0543 479 3213</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Mail className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>info@plann.co</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>2000 Evler Mahallesi, Şehit Polis Murat Hamleci Sk. No:12 Kat:3 Daire:32<br />Nevşehir Merkez</span>
+                </li>
               </ul>
             </div>
           </div>

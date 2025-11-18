@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 const Subscribe = ({ onNavigate }) => {
   const [plans, setPlans] = useState([]);
+  const [currentPlan, setCurrentPlan] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processingPlanId, setProcessingPlanId] = useState(null);
 
@@ -16,10 +17,15 @@ const Subscribe = ({ onNavigate }) => {
 
   const loadPlans = async () => {
     try {
-      const response = await api.get("/plans");
+      const [plansResponse, currentPlanResponse] = await Promise.all([
+        api.get("/plans"),
+        api.get("/plan/current")
+      ]);
+      
       // Trial paketini filtrele, sadece ücretli paketleri göster
-      const paidPlans = response.data.plans.filter(plan => plan.id !== 'tier_trial');
+      const paidPlans = plansResponse.data.plans.filter(plan => plan.id !== 'tier_trial');
       setPlans(paidPlans);
+      setCurrentPlan(currentPlanResponse.data);
     } catch (error) {
       console.error("Planlar yüklenemedi:", error);
       toast.error("Planlar yüklenemedi");
@@ -94,6 +100,7 @@ const Subscribe = ({ onNavigate }) => {
             const discountedPrice = plan.price_monthly_discounted || Math.round(plan.price_monthly * 0.75);
             const originalPrice = plan.price_monthly_original || plan.price_monthly;
             const isProcessing = processingPlanId === plan.id;
+            const isCurrentPlan = currentPlan && currentPlan.plan_id === plan.id;
 
             return (
               <Card
@@ -139,11 +146,15 @@ const Subscribe = ({ onNavigate }) => {
 
                 {/* Aboneliği Başlat Butonu */}
                 <Button
-                  onClick={() => handleStartSubscription(plan.id)}
-                  disabled={isProcessing}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 text-base rounded-lg"
+                  onClick={() => !isCurrentPlan && handleStartSubscription(plan.id)}
+                  disabled={isProcessing || isCurrentPlan}
+                  className={`w-full font-bold h-12 text-base rounded-lg ${
+                    isCurrentPlan 
+                      ? 'bg-gray-300 text-gray-600 cursor-not-allowed' 
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
                 >
-                  {isProcessing ? "İşleniyor..." : "Aboneliği Başlat"}
+                  {isCurrentPlan ? "Mevcut Abonelik" : isProcessing ? "İşleniyor..." : "Aboneliği Başlat"}
                 </Button>
               </Card>
             );
