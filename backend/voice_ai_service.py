@@ -34,15 +34,25 @@ class VoiceAIService:
         if not GEMINI_API_KEY:
             raise ValueError("GOOGLE_GEMINI_KEY environment variable is required")
         
-        # Gemini client'ı başlat
-        self.client = genai.Client(api_key=GEMINI_API_KEY)
+        # Gemini client'ı başlat - v1beta API kullan (Live API için gerekli)
+        self.client = genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options={"api_version": "v1beta"}
+        )
         
-        # Model: Gemini 1.5 Flash (Stable, free tier uyumlu)
-        self.model_name = "models/gemini-1.5-flash"
+        # Model: Gemini 2.5 Flash Native Audio (Resmi dokümantasyondan)
+        self.model_name = "models/gemini-2.5-flash-native-audio-preview-09-2025"
         
-        # Session configuration - basit format
+        # Session configuration - Resmi dokümantasyondan
         self.config = types.LiveConnectConfig(
-            response_modalities=["AUDIO"]
+            response_modalities=["AUDIO"],
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                        voice_name="Zephyr"  # Erkek ses (Alternatif: Aoede, Charon, Fenrir, Kore, Puck)
+                    )
+                )
+            )
         )
         
         logger.info(f"✅ VoiceAIService initialized with model: {self.model_name}")
