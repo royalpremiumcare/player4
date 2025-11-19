@@ -91,8 +91,11 @@ class VoiceAIService:
             # Base64'ü decode et
             audio_bytes = base64.b64decode(audio_base64)
             
-            # AI'ya ses gönder
-            await session.send(audio_bytes, end_of_turn=True)
+            # AI'ya ses gönder - Resmi dokümantasyon formatı
+            await session.send(
+                input={"data": audio_bytes, "mime_type": "audio/pcm"},
+                end_of_turn=True
+            )
             
             logger.debug(f"Audio sent to AI: {len(audio_bytes)} bytes")
         
