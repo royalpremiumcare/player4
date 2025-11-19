@@ -190,6 +190,27 @@ async def create_appointment_tool(db, org_id: str, customer_name: str, phone: st
         }
         await db.appointments.insert_one(apt)
         
+        # SMS gönder - Onay mesajı
+        try:
+            from server import send_sms, build_sms_message
+            settings_data = await db.settings.find_one({"organization_id": org_id})
+            if settings_data:
+                company_name = settings_data.get("company_name", "İşletmeniz")
+                support_phone = settings_data.get("support_phone", "Destek")
+            else:
+                company_name = "İşletmeniz"
+                support_phone = "Destek"
+            
+            sms_message = build_sms_message(
+                company_name, customer_name,
+                apt_date, apt_time,
+                service['name'], support_phone, sms_type="confirmation"
+            )
+            send_sms(phone, sms_message)
+            logger.info(f"✅ SMS sent to {phone} for appointment {apt['id']}")
+        except Exception as e:
+            logger.error(f"SMS send error: {e}")
+        
         # Websocket ile tüm organizasyon kullanıcılarına bildir
         if sio:
             try:
