@@ -37,8 +37,8 @@ class VoiceAIService:
         # Gemini client'ı başlat
         self.client = genai.Client(api_key=GEMINI_API_KEY)
         
-        # Model: Gemini 2.0 Flash (Native Audio destekli)
-        self.model_name = "models/gemini-2.0-flash-exp"
+        # Model: Gemini 1.5 Flash (Stable, free tier uyumlu)
+        self.model_name = "models/gemini-1.5-flash"
         
         # Session configuration - basit format
         self.config = types.LiveConnectConfig(
