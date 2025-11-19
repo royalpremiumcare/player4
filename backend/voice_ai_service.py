@@ -43,16 +43,9 @@ class VoiceAIService:
         # Model: Gemini 2.5 Flash Native Audio (Resmi dokümantasyondan)
         self.model_name = "models/gemini-2.5-flash-native-audio-preview-09-2025"
         
-        # Session configuration - Resmi dokümantasyondan
+        # Session configuration - Minimal (speech_config preview'da desteklenmiyor)
         self.config = types.LiveConnectConfig(
-            response_modalities=["AUDIO"],
-            speech_config=types.SpeechConfig(
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Zephyr"  # Erkek ses (Alternatif: Aoede, Charon, Fenrir, Kore, Puck)
-                    )
-                )
-            )
+            response_modalities=["AUDIO"]
         )
         
         logger.info(f"✅ VoiceAIService initialized with model: {self.model_name}")
