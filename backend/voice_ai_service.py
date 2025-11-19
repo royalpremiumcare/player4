@@ -59,24 +59,17 @@ class VoiceAIService:
         Yeni bir sesli görüşme oturumu oluştur
         
         Args:
-            system_instruction: AI'a verilen sistem talimatları
+            system_instruction: AI'a verilen sistem talimatları (kullanılmıyor - gelecek versiyonlarda eklenebilir)
         
         Returns:
             LiveSession object
         """
         try:
-            # System instruction varsa ekle
-            if system_instruction:
-                session = self.client.aio.live.connect(
-                    model=self.model_name,
-                    config=self.config,
-                    system_instruction=system_instruction
-                )
-            else:
-                session = self.client.aio.live.connect(
-                    model=self.model_name,
-                    config=self.config
-                )
+            # Gemini 2.0 Flash Live API - sadece model ve config ile bağlan
+            session = self.client.aio.live.connect(
+                model=self.model_name,
+                config=self.config
+            )
             
             logger.info("✅ Voice AI session created")
             return session
