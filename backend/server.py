@@ -868,22 +868,28 @@ async def handle_voice_audio(sid, data):
         "audio": "BASE64_ENCODED_AUDIO_DATA"
     }
     """
+    logger.info(f"🎤 [VOICE] handle_voice_audio called for {sid}")
     try:
         # Session kontrolü
+        logger.info(f"🔍 [VOICE] Checking session for {sid}, active sessions: {list(_voice_sessions.keys())}")
         if sid not in _voice_sessions:
+            logger.warning(f"⚠️ [VOICE] No session found for {sid}")
             await sio.emit('voice_error', {
                 'message': 'No active voice session'
             }, room=sid)
             return
         
+        logger.info(f"✅ [VOICE] Session found for {sid}")
+        
         audio_base64 = data.get('audio')
         if not audio_base64:
+            logger.warning(f"⚠️ [VOICE] No audio data in request from {sid}")
             await sio.emit('voice_error', {
                 'message': 'No audio data provided'
             }, room=sid)
             return
         
-        logger.debug(f"🎤 [VOICE] Audio received from {sid}: {len(audio_base64)} chars")
+        logger.info(f"🎤 [VOICE] Audio received from {sid}: {len(audio_base64)} chars")
         
         # Voice service ve session'ı al
         voice_service = get_voice_ai_service()
@@ -891,15 +897,16 @@ async def handle_voice_audio(sid, data):
         voice_session = session_info['session']
         
         # AI'ya sesi gönder (sadece gönder, receive loop zaten çalışıyor)
+        logger.info(f"📨 [VOICE] Calling send_audio for {sid}...")
         await voice_service.send_audio(voice_session, audio_base64)
         
-        logger.debug(f"📤 [VOICE] Audio sent to AI from {sid}")
+        logger.info(f"✅ [VOICE] Audio sent to AI from {sid}")
         
         # Receive loop otomatik olarak cevabı gönderecek
         # Burada await etmeye gerek yok
     
     except Exception as e:
-        logger.error(f"❌ [VOICE] Error processing audio: {e}", exc_info=True)
+        logger.error(f"❌ [VOICE] Error processing audio for {sid}: {e}", exc_info=True)
         await sio.emit('voice_error', {
             'message': f'Failed to process audio: {str(e)}'
         }, room=sid)
