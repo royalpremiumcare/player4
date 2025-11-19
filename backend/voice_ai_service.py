@@ -117,26 +117,40 @@ class VoiceAIService:
             _, session = session_tuple  # Tuple'dan session'ı al
             audio_chunks = []
             
+            logger.info("🔊 [VoiceAI] Starting to receive from session...")
+            
             # AI'dan gelen response'ları dinle
+            response_count = 0
             async for response in session.receive():
+                response_count += 1
+                logger.info(f"📨 [VoiceAI] Response #{response_count} received")
+                
                 # Server content (audio) parçalarını topla
                 if response.server_content:
+                    logger.info(f"📦 [VoiceAI] Response has server_content")
                     if response.server_content.model_turn:
+                        logger.info(f"🤖 [VoiceAI] Response has model_turn with {len(response.server_content.model_turn.parts)} parts")
                         for part in response.server_content.model_turn.parts:
                             if hasattr(part, 'inline_data') and part.inline_data:
+                                chunk_size = len(part.inline_data.data)
                                 audio_chunks.append(part.inline_data.data)
+                                logger.info(f"🎵 [VoiceAI] Audio chunk added: {chunk_size} bytes, total chunks: {len(audio_chunks)}")
                 
                 # Turn complete olduğunda döngüyü kır
                 if response.server_content and response.server_content.turn_complete:
+                    logger.info("✅ [VoiceAI] Turn complete, breaking loop")
                     break
+            
+            logger.info(f"🎶 [VoiceAI] Received total {len(audio_chunks)} audio chunks")
             
             # Tüm ses parçalarını birleştir
             if audio_chunks:
                 full_audio = b''.join(audio_chunks)
                 audio_base64 = base64.b64encode(full_audio).decode('utf-8')
-                logger.debug(f"Audio response received: {len(full_audio)} bytes")
+                logger.info(f"✅ [VoiceAI] Audio response ready: {len(full_audio)} bytes")
                 return audio_base64
             
+            logger.warning("⚠️ [VoiceAI] No audio chunks received")
             return None
         
         except Exception as e:

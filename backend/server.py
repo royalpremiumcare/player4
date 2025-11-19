@@ -749,17 +749,26 @@ async def _voice_receive_loop(sid, voice_session, voice_service):
     try:
         logger.info(f"🔊 [VOICE] Receive loop started for {sid}")
         
+        loop_count = 0
         while sid in _voice_sessions:
+            loop_count += 1
+            logger.info(f"🔄 [VOICE] Receive loop iteration {loop_count} for {sid}")
+            
             # AI'dan ses cevabını al
+            logger.info(f"⏳ [VOICE] Waiting for AI response for {sid}...")
             response_audio = await voice_service.receive_audio_response(voice_session)
+            logger.info(f"✅ [VOICE] Received response from AI for {sid}, has_audio: {bool(response_audio)}")
             
             if response_audio:
                 # Client'a ses cevabını gönder
+                logger.info(f"📤 [VOICE] Sending audio response to {sid}, size: {len(response_audio)}")
                 await sio.emit('voice_response', {
                     'audio': response_audio
                 }, room=sid)
                 
-                logger.debug(f"🔊 [VOICE] Audio response sent to {sid}")
+                logger.info(f"✅ [VOICE] Audio response sent to {sid}")
+            else:
+                logger.warning(f"⚠️ [VOICE] No audio in response for {sid}")
             
             # Küçük bir bekleme (CPU'yu aşırı yüklememek için)
             await asyncio.sleep(0.01)
