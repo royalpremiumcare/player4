@@ -2,6 +2,11 @@ import os
 import base64
 import logging
 from typing import Optional
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv(Path(__file__).parent / '.env')
 
 try:
     from google import genai
@@ -14,7 +19,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Gemini API Key
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+GEMINI_API_KEY = os.getenv('GOOGLE_GEMINI_KEY')  # .env'deki key ismi
 
 class VoiceAIService:
     """
@@ -27,7 +32,7 @@ class VoiceAIService:
             raise RuntimeError("google-genai SDK not available")
         
         if not GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY environment variable is required")
+            raise ValueError("GOOGLE_GEMINI_KEY environment variable is required")
         
         # Gemini client'ı başlat
         self.client = genai.Client(api_key=GEMINI_API_KEY)
