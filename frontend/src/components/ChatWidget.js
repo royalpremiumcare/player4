@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, X, Send, Loader2, Mic, MicOff } from 'lucide-react';
+import { io } from 'socket.io-client';
 
 const ChatWidget = ({ user }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -7,7 +8,7 @@ const ChatWidget = ({ user }) => {
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
-  const [usageInfo, setUsageInfo] = useState({ current: 0, limit: -1 }); // AI mesaj kullanım bilgisi
+  const [usageInfo, setUsageInfo] = useState({ current: 0, limit: -1 });
   const messagesEndRef = useRef(null);
 
   // Voice mode states
@@ -19,7 +20,11 @@ const ChatWidget = ({ user }) => {
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const silenceTimeoutRef = useRef(null);
-  const audioPlayerRef = useRef(null);
+  const socketRef = useRef(null);
+
+  // Voice config
+  const SILENCE_THRESHOLD = 0.01;
+  const SILENCE_DURATION = 1500;
 
   // Kullanıcı rolüne göre örnek sorular
   const sampleQuestions = user?.role === 'admin' 
@@ -132,6 +137,273 @@ const ChatWidget = ({ user }) => {
     }
   };
 
+  // === VOICE MODE ===
+  const toggleVoiceMode = async () => {
+    if (!voiceMode) {
+      await startVoiceSession();
+    } else {
+      await stopVoiceSession();
+    }
+  };
+
+  const startVoiceSession = async () => {
+    try {
+      console.log('🎤 Starting voice session...');
+      
+      const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+      const socket = io('/', {
+        auth: { token },
+        transports: ['websocket', 'polling']
+      });
+
+      socketRef.current = socket;
+
+      socket.on('connect', () => {
+        console.log('✅ Voice WebSocket connected');
+        
+        socket.emit('voice_start', {
+          organization_id: user?.organization_id,
+          user_role: user?.role,
+          username: user?.username
+        });
+      });
+
+      socket.on('voice_ready', () => {
+        console.log('✅ Voice session ready');
+        setVoiceMode(true);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '🎤 Sesli mod aktif! Konuşmaya başlayabilirsiniz.'
+        }]);
+        
+        startListening();
+      });
+
+      socket.on('voice_response', async (data) => {
+        console.log('🔊 Voice response received');
+        
+        setIsSpeaking(true);
+        setIsListening(false);
+        
+        await playAudioResponse(data.audio);
+        
+        setIsSpeaking(false);
+        if (voiceMode) {
+          startListening();
+        }
+      });
+
+      socket.on('voice_error', (data) => {
+        console.error('❌ Voice error:', data.message);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `❌ Sesli mod hatası: ${data.message}`
+        }]);
+      });
+
+      socket.on('voice_stopped', () => {
+        console.log('🛑 Voice session stopped');
+        setVoiceMode(false);
+      });
+
+    } catch (error) {
+      console.error('Voice session start error:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '❌ Sesli mod başlatılamadı. Lütfen mikrofon iznini kontrol edin.'
+      }]);
+    }
+  };
+
+  const stopVoiceSession = async () => {
+    try {
+      console.log('🛑 Stopping voice session...');
+      
+      stopListening();
+      
+      if (socketRef.current) {
+        socketRef.current.emit('voice_stop');
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      
+      setVoiceMode(false);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '🛑 Sesli mod kapatıldı.'
+      }]);
+      
+    } catch (error) {
+      console.error('Voice session stop error:', error);
+    }
+  };
+
+  const startListening = async () => {
+    try {
+      console.log('🎤 Starting to listen...');
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+      
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+      
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = () => {
+        sendAudioToAI();
+      };
+      
+      detectVoiceActivity();
+      
+      setIsListening(true);
+      
+    } catch (error) {
+      console.error('Mikrofon başlatma hatası:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '❌ Mikrofon erişimi reddedildi. Lütfen izin verin.'
+      }]);
+    }
+  };
+
+  const stopListening = () => {
+    console.log('🛑 Stopping listening...');
+    
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+    
+    setIsListening(false);
+  };
+
+  const detectVoiceActivity = () => {
+    if (!analyserRef.current) return;
+    
+    const analyser = analyserRef.current;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    const checkAudio = () => {
+      if (!isListening) return;
+      
+      analyser.getByteFrequencyData(dataArray);
+      
+      const average = dataArray.reduce((a, b) => a + b) / bufferLength / 255;
+      
+      if (average > SILENCE_THRESHOLD) {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'inactive') {
+          console.log('🎤 Voice detected, starting recording...');
+          mediaRecorderRef.current.start();
+        }
+        
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+          silenceTimeoutRef.current = null;
+        }
+      } else {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          if (!silenceTimeoutRef.current) {
+            silenceTimeoutRef.current = setTimeout(() => {
+              console.log('🔇 Silence detected, stopping recording...');
+              if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                mediaRecorderRef.current.stop();
+              }
+              silenceTimeoutRef.current = null;
+            }, SILENCE_DURATION);
+          }
+        }
+      }
+      
+      requestAnimationFrame(checkAudio);
+    };
+    
+    checkAudio();
+  };
+
+  const sendAudioToAI = async () => {
+    try {
+      if (audioChunksRef.current.length === 0) {
+        console.log('⚠️ No audio data to send');
+        return;
+      }
+      
+      console.log('📤 Sending audio to AI...');
+      
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      audioChunksRef.current = [];
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Audio = reader.result.split(',')[1];
+        
+        if (socketRef.current) {
+          socketRef.current.emit('voice_audio', {
+            audio: base64Audio
+          });
+        }
+      };
+      reader.readAsDataURL(audioBlob);
+      
+    } catch (error) {
+      console.error('Audio send error:', error);
+    }
+  };
+
+  const playAudioResponse = async (base64Audio) => {
+    return new Promise((resolve) => {
+      try {
+        console.log('🔊 Playing AI response...');
+        
+        const audioData = atob(base64Audio);
+        const arrayBuffer = new ArrayBuffer(audioData.length);
+        const view = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < audioData.length; i++) {
+          view[i] = audioData.charCodeAt(i);
+        }
+        
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioContext.decodeAudioData(arrayBuffer, (audioBuffer) => {
+          const source = audioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(audioContext.destination);
+          source.onended = () => {
+            console.log('✅ AI response playback finished');
+            resolve();
+          };
+          source.start(0);
+        });
+        
+      } catch (error) {
+        console.error('Audio playback error:', error);
+        resolve();
+      }
+    });
+  };
+
   // Widget kapalıysa sadece butonu göster
   if (!isOpen) {
     return (
@@ -158,15 +430,31 @@ const ChatWidget = ({ user }) => {
             <Sparkles className="w-5 h-5" />
             <div>
               <h3 className="font-semibold">PLANN Asistan</h3>
-              <p className="text-xs opacity-90">AI destekli yardımcınız</p>
+              <p className="text-xs opacity-90">
+                {voiceMode ? '🎤 Sesli Mod Aktif' : 'AI destekli yardımcınız'}
+              </p>
             </div>
           </div>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="hover:bg-white/20 rounded-full p-1 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {/* Sesli Mod Toggle */}
+            <button
+              onClick={toggleVoiceMode}
+              className={`p-2 rounded-full transition-all ${
+                voiceMode 
+                  ? 'bg-red-500 hover:bg-red-600' 
+                  : 'bg-white/20 hover:bg-white/30'
+              }`}
+              title={voiceMode ? 'Sesli Modu Kapat' : 'Sesli Modu Aç'}
+            >
+              {voiceMode ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="hover:bg-white/20 rounded-full p-1 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
         
         {/* Quota Gösterimi */}
@@ -203,7 +491,7 @@ const ChatWidget = ({ user }) => {
           </div>
         ))}
 
-        {isLoading && (
+        {(isLoading || isSpeaking) && (
           <div className="flex justify-start">
             <div className="bg-white rounded-2xl px-4 py-3 shadow-sm border border-gray-200">
               <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
@@ -211,8 +499,16 @@ const ChatWidget = ({ user }) => {
           </div>
         )}
 
-        {/* Örnek Sorular - Sadece mesaj yoksa */}
-        {messages.length <= 1 && !isLoading && (
+        {isListening && (
+          <div className="flex justify-center">
+            <div className="bg-red-100 text-red-600 text-xs px-3 py-1 rounded-full animate-pulse">
+              🎤 Dinleniyor...
+            </div>
+          </div>
+        )}
+
+        {/* Örnek Sorular */}
+        {messages.length <= 1 && !isLoading && !voiceMode && (
           <div className="space-y-2">
             <p className="text-xs text-gray-500 text-center">Örnek sorular:</p>
             {sampleQuestions.map((q, idx) => (
@@ -230,8 +526,9 @@ const ChatWidget = ({ user }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="p-4 bg-white border-t border-gray-200">
+      {/* Input - Sadece voice mode kapalıyken */}
+      {!voiceMode && (
+        <div className="p-4 bg-white border-t border-gray-200">
         {usageInfo.limit !== -1 && usageInfo.current >= usageInfo.limit ? (
           // Limit doldu - Upgrade butonu göster
           <div className="text-center">
@@ -270,7 +567,8 @@ const ChatWidget = ({ user }) => {
             </p>
           </>
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
