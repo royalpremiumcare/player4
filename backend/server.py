@@ -2914,8 +2914,9 @@ async def create_checkout_session(
         store_card = '1'  # Kart tokenize et (recurring payment için)
         
         # 8. PAYTR TOKEN (HASH) OLUŞTURMA
-        # Doğru sıra: merchant_id + user_ip + merchant_oid + email + payment_amount + user_basket + no_installment + max_installment + currency + test_mode + store_card
-        hash_str = f"{PAYTR_MERCHANT_ID}{user_ip}{merchant_oid}{user_email}{payment_amount_kurus}{user_basket}{no_installment}{max_installment}{currency}{test_mode}{store_card}"
+        # Doğru sıra: merchant_id + user_ip + merchant_oid + email + payment_amount + user_basket + no_installment + max_installment + currency + test_mode
+        # NOT: store_card hash'e dahil DEĞİL, sadece post_data'ya eklenir
+        hash_str = f"{PAYTR_MERCHANT_ID}{user_ip}{merchant_oid}{user_email}{payment_amount_kurus}{user_basket}{no_installment}{max_installment}{currency}{test_mode}"
         
         paytr_token = base64.b64encode(hmac.new(
             PAYTR_MERCHANT_KEY.encode('utf-8'), 
