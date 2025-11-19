@@ -22,6 +22,7 @@ const ChatWidget = ({ user }) => {
   const analyserRef = useRef(null);
   const silenceTimeoutRef = useRef(null);
   const socketRef = useRef(null);
+  const isListeningRef = useRef(false); // Ref ile kontrol (state asenkron)
 
   // Voice config
   const SILENCE_THRESHOLD = 0.005; // Daha hassas (0.01'den 0.005'e düştü)
@@ -273,9 +274,10 @@ const ChatWidget = ({ user }) => {
         sendAudioToAI();
       };
       
-      detectVoiceActivity();
-      
       setIsListening(true);
+      isListeningRef.current = true; // Ref'i hemen güncelle
+      
+      detectVoiceActivity();
       
     } catch (error) {
       console.error('Mikrofon başlatma hatası:', error);
@@ -288,6 +290,8 @@ const ChatWidget = ({ user }) => {
 
   const stopListening = () => {
     console.log('🛑 Stopping listening...');
+    
+    isListeningRef.current = false; // Önce ref'i kapat (loop dursun)
     
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -314,7 +318,7 @@ const ChatWidget = ({ user }) => {
     const dataArray = new Uint8Array(bufferLength);
     
     const checkAudio = () => {
-      if (!isListening) return;
+      if (!isListeningRef.current) return; // Ref ile kontrol
       
       analyser.getByteFrequencyData(dataArray);
       
