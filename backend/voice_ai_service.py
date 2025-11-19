@@ -40,16 +40,9 @@ class VoiceAIService:
         # Model: Gemini 2.0 Flash (Native Audio destekli)
         self.model_name = "models/gemini-2.0-flash-exp"
         
-        # Session configuration
+        # Session configuration - basit format
         self.config = types.LiveConnectConfig(
-            response_modalities=["AUDIO"],
-            speech_config=types.SpeechConfig(
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Aoede"  # Kadın sesi (alternatif: Charon, Fenrir, Kore, Puck)
-                    )
-                )
-            )
+            response_modalities=["AUDIO"]
         )
         
         logger.info(f"✅ VoiceAIService initialized with model: {self.model_name}")
