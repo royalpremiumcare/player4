@@ -132,13 +132,48 @@ async def create_appointment_tool(db, org_id: str, customer_name: str, phone: st
                                  service_id: str, apt_date: str, apt_time: str,
                                  staff_id: Optional[str] = None, notes: str = "") -> Dict:
     """Randevu oluştur"""
+    plan_doc = None
+    quota_incremented = False
     try:
         # Telefon numarası kontrolü
         if not phone or len(phone) < 10:
             return {"success": False, "message": "❌ Geçerli bir telefon numarası gerekli (05XXXXXXXXX)"}
         
+        # KOTA KONTROLÜ VE ARTIRMA
+        plan_doc = await db.organization_plans.find_one({"organization_id": org_id})
+        if plan_doc:
+            current_usage = plan_doc.get('quota_usage', 0)
+            plan_id = plan_doc.get('plan_id', 'tier_trial')
+            
+            # Plan limitini al (basit kontrol)
+            quota_limit = 50  # Default trial limit
+            if plan_id == 'tier_premium':
+                quota_limit = 500
+            elif plan_id == 'tier_business':
+                quota_limit = 2000
+            elif plan_id == 'tier_enterprise':
+                quota_limit = 999999  # Unlimited
+            
+            # Kota kontrolü
+            if current_usage >= quota_limit:
+                return {"success": False, "message": f"❌ Aylık randevu limitinize ulaştınız ({quota_limit}). Paketinizi yükseltmeniz gerekmektedir."}
+            
+            # Kullanımı artır
+            await db.organization_plans.update_one(
+                {"organization_id": org_id},
+                {"$inc": {"quota_usage": 1}}
+            )
+            quota_incremented = True
+            logger.info(f"✅ Quota incremented for org {org_id}: {current_usage + 1}/{quota_limit}")
+        
         service = await db.services.find_one({"id": service_id, "organization_id": org_id})
         if not service:
+            # Kota artırıldı ama hizmet bulunamadı, geri al
+            if plan_doc:
+                await db.organization_plans.update_one(
+                    {"organization_id": org_id},
+                    {"$inc": {"quota_usage": -1}}
+                )
             return {"success": False, "message": "❌ Hizmet bulunamadı"}
         
         # Geçmiş tarih kontrolü
@@ -146,6 +181,12 @@ async def create_appointment_tool(db, org_id: str, customer_name: str, phone: st
         now = datetime.now(turkey_tz)
         apt_dt = datetime.strptime(f"{apt_date} {apt_time}", "%Y-%m-%d %H:%M").replace(tzinfo=turkey_tz)
         if apt_dt < now:
+            # Kota geri al
+            if plan_doc:
+                await db.organization_plans.update_one(
+                    {"organization_id": org_id},
+                    {"$inc": {"quota_usage": -1}}
+                )
             return {"success": False, "message": "⚠️ Geçmiş tarihe randevu alınamaz"}
         
         # Personel atama
@@ -166,10 +207,22 @@ async def create_appointment_tool(db, org_id: str, customer_name: str, phone: st
                     break
             
             if not staff_id:
+                # Kota geri al
+                if plan_doc:
+                    await db.organization_plans.update_one(
+                        {"organization_id": org_id},
+                        {"$inc": {"quota_usage": -1}}
+                    )
                 return {"success": False, "message": "⚠️ Müsait personel yok"}
         else:
             staff = await db.users.find_one({"username": staff_id, "organization_id": org_id})
             if not staff:
+                # Kota geri al
+                if plan_doc:
+                    await db.organization_plans.update_one(
+                        {"organization_id": org_id},
+                        {"$inc": {"quota_usage": -1}}
+                    )
                 return {"success": False, "message": "❌ Personel bulunamadı"}
             
             conflict = await db.appointments.find_one({
@@ -178,6 +231,12 @@ async def create_appointment_tool(db, org_id: str, customer_name: str, phone: st
                 "status": {"$ne": "İptal Edildi"}
             })
             if conflict:
+                # Kota geri al
+                if plan_doc:
+                    await db.organization_plans.update_one(
+                        {"organization_id": org_id},
+                        {"$inc": {"quota_usage": -1}}
+                    )
                 return {"success": False, "message": f"⚠️ Bu saatte randevu var"}
             
             staff_name = staff.get('full_name', staff_id)
@@ -239,6 +298,16 @@ async def create_appointment_tool(db, org_id: str, customer_name: str, phone: st
         }
     except Exception as e:
         logger.error(f"create_appointment_tool error: {e}")
+        # Kota artırıldıysa geri al
+        if quota_incremented and plan_doc:
+            try:
+                await db.organization_plans.update_one(
+                    {"organization_id": org_id},
+                    {"$inc": {"quota_usage": -1}}
+                )
+                logger.info(f"✅ Quota rolled back for org {org_id} due to error")
+            except Exception as rollback_error:
+                logger.error(f"Failed to rollback quota: {rollback_error}")
         return {"success": False, "message": f"❌ Hata: {str(e)}"}
 
 
