@@ -7,6 +7,7 @@ const ChatWidget = ({ user }) => {
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
+  const [usageInfo, setUsageInfo] = useState({ current: 0, limit: -1 }); // AI mesaj kullanım bilgisi
   const messagesEndRef = useRef(null);
 
   // Kullanıcı rolüne göre örnek sorular
@@ -84,12 +85,26 @@ const ChatWidget = ({ user }) => {
         setChatHistory(data.history);
       }
 
+      // Kullanım bilgisini güncelle
+      if (data.usage_info) {
+        setUsageInfo(data.usage_info);
+      }
+
     } catch (error) {
       console.error('AI chat error:', error);
-      setMessages([...newMessages, { 
-        role: 'assistant', 
-        content: '❌ Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.' 
-      }]);
+      
+      // Kota hatasını yakala
+      if (error.message && error.message.includes('limitiniz doldu')) {
+        setMessages([...newMessages, { 
+          role: 'assistant', 
+          content: '❌ Aylık AI kullanım limitiniz doldu. Kesintisiz hizmet için paketinizi yükseltin.' 
+        }]);
+      } else {
+        setMessages([...newMessages, { 
+          role: 'assistant', 
+          content: '❌ Üzügünüm, bir hata oluştu. Lütfen tekrar deneyin.' 
+        }]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -126,20 +141,34 @@ const ChatWidget = ({ user }) => {
   return (
     <div className="fixed bottom-24 right-6 z-50 w-96 max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-2rem)] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200">
       {/* Header */}
-      <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Sparkles className="w-5 h-5" />
-          <div>
-            <h3 className="font-semibold">PLANN Asistan</h3>
-            <p className="text-xs opacity-90">AI destekli yardımcınız</p>
+      <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center space-x-2">
+            <Sparkles className="w-5 h-5" />
+            <div>
+              <h3 className="font-semibold">PLANN Asistan</h3>
+              <p className="text-xs opacity-90">AI destekli yardımcınız</p>
+            </div>
           </div>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="hover:bg-white/20 rounded-full p-1 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <button
-          onClick={() => setIsOpen(false)}
-          className="hover:bg-white/20 rounded-full p-1 transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        
+        {/* Quota Gösterimi */}
+        {usageInfo.limit === -1 ? (
+          <div className="text-xs bg-yellow-400/20 text-yellow-100 px-2 py-1 rounded-lg flex items-center space-x-1">
+            <Sparkles className="w-3 h-3" />
+            <span>AI Erişiminiz: Sınırsız ✨</span>
+          </div>
+        ) : usageInfo.current >= usageInfo.limit * 0.9 ? (
+          <div className="text-xs bg-orange-500/30 text-orange-100 px-2 py-1 rounded-lg">
+            <span>⚠️ Kalan Hakkınız: {usageInfo.current} / {usageInfo.limit}</span>
+          </div>
+        ) : null}
       </div>
 
       {/* Messages */}
@@ -192,27 +221,44 @@ const ChatWidget = ({ user }) => {
 
       {/* Input */}
       <div className="p-4 bg-white border-t border-gray-200">
-        <div className="flex space-x-2">
-          <input
-            type="text"
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Mesajınızı yazın..."
-            disabled={isLoading}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!inputMessage.trim() || isLoading}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl px-4 py-2 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Send className="w-5 h-5" />
-          </button>
-        </div>
-        <p className="text-xs text-gray-400 mt-2 text-center">
-          AI bazen hata yapabilir. Önemli kararlar için doğrulayın.
-        </p>
+        {usageInfo.limit !== -1 && usageInfo.current >= usageInfo.limit ? (
+          // Limit doldu - Upgrade butonu göster
+          <div className="text-center">
+            <button
+              onClick={() => window.location.href = '/subscribe'}
+              className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl px-4 py-3 hover:shadow-lg transition-all font-semibold"
+            >
+              Limit Doldu - Paketi Yükselt 🚀
+            </button>
+            <p className="text-xs text-gray-500 mt-2">
+              Aylık AI kullanım limitiniz doldu. Kesintisiz hizmet için paketinizi yükseltin.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Mesajınızı yazın..."
+                disabled={isLoading}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+              />
+              <button
+                onClick={sendMessage}
+                disabled={!inputMessage.trim() || isLoading}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl px-4 py-2 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              AI bazen hata yapabilir. Önemli kararlar için doğrulayın.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

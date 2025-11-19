@@ -918,6 +918,7 @@ async def check_quota_and_increment(db, organization_id: str) -> tuple[bool, str
             {
                 "$set": {
                     "quota_usage": 0,
+                    "ai_usage_count": 0,  # AI mesaj kotasını da sıfırla
                     "quota_reset_date": new_reset_date.isoformat(),
                     "is_first_month": False,  # İlk ay indirimi sadece bir kez
                     "updated_at": datetime.now(timezone.utc).isoformat()
@@ -1120,6 +1121,7 @@ PLANS = [
         "name": "Trial",
         "price_monthly": 0,
         "quota_monthly_appointments": 50,
+        "ai_message_limit": 100,
         "trial_days": 7,
         "features": [
             "50 Randevu veya 7 Gün (Hangisi önce)",
@@ -1127,7 +1129,8 @@ PLANS = [
             "Sınırsız Personel",
             "Sınırsız Müşteri",
             "Online Randevu",
-            "İstatistikler"
+            "İstatistikler",
+            "Yapay Zeka Akıllı Asistan (Test)"
         ],
         "target_audience_tr": "Yeni kullanıcılar için deneme paketi."
     },
@@ -1136,13 +1139,15 @@ PLANS = [
         "name": "Standart",
         "price_monthly": 520,
         "quota_monthly_appointments": 100,
+        "ai_message_limit": 500,
         "features": [
             "100 Randevu/Ay",
             "Randevu Hatırlatma Dahil",
             "Sınırsız Personel",
             "Sınırsız Müşteri",
             "Online Randevu",
-            "İstatistikler"
+            "İstatistikler",
+            "Yapay Zeka Akıllı Asistan (Standart Kullanım)"
         ],
         "target_audience_tr": "Yeni başlayanlar, tek kişilik veya butik işletmeler için ideal başlangıç paketi."
     },
@@ -1151,13 +1156,15 @@ PLANS = [
         "name": "Profesyonel",
         "price_monthly": 780,
         "quota_monthly_appointments": 300,
+        "ai_message_limit": 3000,
         "features": [
             "300 Randevu/Ay",
             "Randevu Hatırlatma Dahil",
             "Sınırsız Personel",
             "Sınırsız Müşteri",
             "Online Randevu",
-            "İstatistikler"
+            "İstatistikler",
+            "Yapay Zeka Akıllı Asistan (Gelişmiş Kullanım)"
         ],
         "target_audience_tr": "Büyümekte olan ve müşteri kitlesini oturtmaya başlamış salonlar için."
     },
@@ -1166,13 +1173,15 @@ PLANS = [
         "name": "Premium",
         "price_monthly": 1100,
         "quota_monthly_appointments": 600,
+        "ai_message_limit": 10000,
         "features": [
             "600 Randevu/Ay",
             "Randevu Hatırlatma Dahil",
             "Sınırsız Personel",
             "Sınırsız Müşteri",
             "Online Randevu",
-            "İstatistikler"
+            "İstatistikler",
+            "Akıllı Asistan (Limitsiz*)"
         ],
         "target_audience_tr": "Düzenli ve sabit bir müşteri hacmine sahip, yerleşik işletmeler için."
     },
@@ -1181,13 +1190,15 @@ PLANS = [
         "name": "Business",
         "price_monthly": 1300,
         "quota_monthly_appointments": 900,
+        "ai_message_limit": -1,
         "features": [
             "900 Randevu/Ay",
             "Randevu Hatırlatma Dahil",
             "Sınırsız Personel",
             "Sınırsız Müşteri",
             "Online Randevu",
-            "İstatistikler"
+            "İstatistikler",
+            "Akıllı Asistan (Limitsiz*)"
         ],
         "target_audience_tr": "Yoğun tempolu, orta ölçekli salonlar ve merkezler için en popüler seçim."
     },
@@ -1196,13 +1207,15 @@ PLANS = [
         "name": "Enterprise",
         "price_monthly": 1500,
         "quota_monthly_appointments": 1200,
+        "ai_message_limit": -1,
         "features": [
             "1.200 Randevu/Ay",
             "Randevu Hatırlatma Dahil",
             "Sınırsız Personel",
             "Sınırsız Müşteri",
             "Online Randevu",
-            "İstatistikler"
+            "İstatistikler",
+            "Akıllı Asistan (Limitsiz*)"
         ],
         "target_audience_tr": "Yüksek hacimli, birden fazla uzman/personel çalıştıran salonlar ve klinikler için."
     },
@@ -1211,13 +1224,15 @@ PLANS = [
         "name": "Kurumsal",
         "price_monthly": 1990,
         "quota_monthly_appointments": 2000,
+        "ai_message_limit": -1,
         "features": [
             "2.000 Randevu/Ay",
             "Randevu Hatırlatma Dahil",
             "Sınırsız Personel",
             "Sınırsız Müşteri",
             "Online Randevu",
-            "İstatistikler"
+            "İstatistikler",
+            "Akıllı Asistan (Limitsiz*)"
         ],
         "target_audience_tr": "Sektörün en yoğun klinikleri, poliklinikler ve büyük ölçekli işletmeler için tam çözüm."
     }
@@ -1229,6 +1244,7 @@ class OrganizationPlan(BaseModel):
     organization_id: str
     plan_id: str = "tier_trial"  # Default trial
     quota_usage: int = 0  # Bu ay kullanılan randevu sayısı
+    ai_usage_count: int = 0  # Bu ay atılan AI mesaj sayısı
     quota_reset_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=30))  # Kota sıfırlama tarihi
     trial_start_date: Optional[datetime] = None  # Trial başlangıç tarihi
     trial_end_date: Optional[datetime] = None  # Trial bitiş tarihi
@@ -6118,6 +6134,37 @@ async def ai_chat_endpoint(
         organization_id = current_user.organization_id
         user_full_name = getattr(current_user, 'full_name', username) or username
         
+        # AI MESAJ KOTA KONTROLÜ
+        plan_doc = await db.organization_plans.find_one({"organization_id": organization_id})
+        if not plan_doc:
+            # Plan yoksa default trial oluştur
+            plan_doc = {
+                "organization_id": organization_id,
+                "plan_id": "tier_trial",
+                "quota_usage": 0,
+                "ai_usage_count": 0,
+                "quota_reset_date": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.organization_plans.insert_one(plan_doc)
+        
+        # Plan limitini al
+        plan_id = plan_doc.get('plan_id', 'tier_trial')
+        plan_info = next((p for p in PLANS if p['id'] == plan_id), None)
+        
+        if not plan_info:
+            raise HTTPException(status_code=500, detail="Plan bilgisi bulunamadı")
+        
+        ai_message_limit = plan_info.get('ai_message_limit', 100)
+        current_ai_usage = plan_doc.get('ai_usage_count', 0)
+        
+        # Limit kontrolü (Sınırsız değilse)
+        if ai_message_limit != -1 and current_ai_usage >= ai_message_limit:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Aylık AI kullanım limitiniz doldu ({ai_message_limit} mesaj). Kesintisiz hizmet için paketinizi yükseltin."
+            )
+        
         # Organizasyon bilgisini al
         settings = await db.settings.find_one({"organization_id": organization_id})
         organization_name = settings.get('company_name', 'İşletme') if settings else 'İşletme'
@@ -6136,10 +6183,23 @@ async def ai_chat_endpoint(
         if not result.get('success'):
             raise HTTPException(status_code=500, detail=result.get('message', 'AI hatası'))
         
+        # Başarılı mesaj - Kullanımı artır
+        await db.organization_plans.update_one(
+            {"organization_id": organization_id},
+            {"$inc": {"ai_usage_count": 1}}
+        )
+        
+        # Güncel kullanım bilgisini al
+        new_usage = current_ai_usage + 1
+        
         return {
             "success": True,
             "message": result.get('message'),
-            "history": result.get('history', [])
+            "history": result.get('history', []),
+            "usage_info": {
+                "current": new_usage,
+                "limit": ai_message_limit
+            }
         }
     
     except HTTPException:
