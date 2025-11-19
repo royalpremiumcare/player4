@@ -1,3 +1,4 @@
+from voice_ai_service import get_voice_ai_service
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Response, File, UploadFile
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
@@ -659,6 +660,19 @@ async def connect(sid, environ, *args):
 async def disconnect(sid):
     """Client disconnected"""
     logger.info(f"WebSocket client disconnected: {sid}")
+    
+    # Voice session cleanup
+    if sid in _voice_sessions:
+        try:
+            voice_service = get_voice_ai_service()
+            if voice_service:
+                session_info = _voice_sessions[sid]
+                voice_session = session_info['session']
+                await voice_service.close_session(voice_session)
+                del _voice_sessions[sid]
+                logger.info(f"🧹 [VOICE] Voice session cleaned up for disconnected client {sid}")
+        except Exception as e:
+            logger.error(f"Error cleaning up voice session: {e}")
 
 @sio.event
 async def join_organization(sid, data):
@@ -711,6 +725,180 @@ async def leave_organization(sid, data):
     if organization_id:
         await sio.leave_room(sid, f"org_{organization_id}")
         logger.info(f"Client {sid} left organization room: org_{organization_id}")
+
+# === VOICE AI WEBSOCKET HANDLERS ===
+
+# Active voice sessions dictionary
+_voice_sessions = {}
+
+@sio.on('voice_start')
+async def handle_voice_start(sid, data):
+    """
+    Sesli görüşme oturumunu başlat
+    
+    Client'tan gelen data:
+    {
+        "organization_id": "...",
+        "user_role": "admin",
+        "username": "..."
+    }
+    """
+    try:
+        logger.info(f"🎤 [VOICE] Voice session start request from {sid}")
+        
+        # Session kontrolü
+        session_data = await sio.get_session(sid)
+        if not session_data:
+            await sio.emit('voice_error', {
+                'message': 'Not authenticated'
+            }, room=sid)
+            return
+        
+        organization_id = data.get('organization_id')
+        user_role = data.get('user_role', 'staff')
+        username = data.get('username', 'User')
+        
+        # Voice AI service'i al
+        voice_service = get_voice_ai_service()
+        if not voice_service:
+            await sio.emit('voice_error', {
+                'message': 'Voice AI service not available'
+            }, room=sid)
+            return
+        
+        # System instruction oluştur (metin chatbot'takine benzer)
+        system_instruction = f"""
+Sen PLANN Asistan'sın. Randevu yönetim sistemi için sesli asistansın.
+
+Organizasyon: {organization_id}
+Kullanıcı Rolü: {user_role}
+Kullanıcı: {username}
+
+Görevlerin:
+- Randevu bilgilerini sesli olarak açıkla
+- Kullanıcı sorularına doğal ve akıcı yanıt ver
+- Gerektiğinde metin chatbot'a yönlendir (karmaşık işlemler için)
+
+Yanıtların kısa, net ve doğal olsun. Türkçe konuş.
+"""
+        
+        # Yeni sesli oturum oluştur
+        voice_session = await voice_service.create_session(
+            system_instruction=system_instruction
+        )
+        
+        # Session'ı kaydet
+        _voice_sessions[sid] = {
+            'session': voice_session,
+            'organization_id': organization_id,
+            'user_role': user_role,
+            'username': username
+        }
+        
+        # Client'a başarı bildirimi gönder
+        await sio.emit('voice_ready', {
+            'status': 'ready',
+            'message': 'Voice session initialized'
+        }, room=sid)
+        
+        logger.info(f"✅ [VOICE] Voice session created for {sid}")
+    
+    except Exception as e:
+        logger.error(f"❌ [VOICE] Error starting voice session: {e}", exc_info=True)
+        await sio.emit('voice_error', {
+            'message': f'Failed to start voice session: {str(e)}'
+        }, room=sid)
+
+
+@sio.on('voice_audio')
+async def handle_voice_audio(sid, data):
+    """
+    Kullanıcıdan gelen sesi işle ve AI cevabını döndür
+    
+    Client'tan gelen data:
+    {
+        "audio": "BASE64_ENCODED_AUDIO_DATA"
+    }
+    """
+    try:
+        # Session kontrolü
+        if sid not in _voice_sessions:
+            await sio.emit('voice_error', {
+                'message': 'No active voice session'
+            }, room=sid)
+            return
+        
+        audio_base64 = data.get('audio')
+        if not audio_base64:
+            await sio.emit('voice_error', {
+                'message': 'No audio data provided'
+            }, room=sid)
+            return
+        
+        logger.debug(f"🎤 [VOICE] Audio received from {sid}: {len(audio_base64)} chars")
+        
+        # Voice service ve session'ı al
+        voice_service = get_voice_ai_service()
+        session_info = _voice_sessions[sid]
+        voice_session = session_info['session']
+        
+        # AI'ya sesi gönder
+        await voice_service.send_audio(voice_session, audio_base64)
+        
+        # AI'dan cevabı al
+        response_audio = await voice_service.receive_audio_response(voice_session)
+        
+        if response_audio:
+            # Client'a ses cevabını gönder
+            await sio.emit('voice_response', {
+                'audio': response_audio
+            }, room=sid)
+            
+            logger.debug(f"🔊 [VOICE] Audio response sent to {sid}: {len(response_audio)} chars")
+        else:
+            await sio.emit('voice_error', {
+                'message': 'No response from AI'
+            }, room=sid)
+    
+    except Exception as e:
+        logger.error(f"❌ [VOICE] Error processing audio: {e}", exc_info=True)
+        await sio.emit('voice_error', {
+            'message': f'Failed to process audio: {str(e)}'
+        }, room=sid)
+
+
+@sio.on('voice_stop')
+async def handle_voice_stop(sid):
+    """
+    Sesli görüşme oturumunu kapat
+    """
+    try:
+        if sid not in _voice_sessions:
+            return
+        
+        logger.info(f"🛑 [VOICE] Voice session stop request from {sid}")
+        
+        # Voice service ve session'ı al
+        voice_service = get_voice_ai_service()
+        session_info = _voice_sessions[sid]
+        voice_session = session_info['session']
+        
+        # Session'ı kapat
+        await voice_service.close_session(voice_session)
+        
+        # Session'ı sil
+        del _voice_sessions[sid]
+        
+        # Client'a bildirim gönder
+        await sio.emit('voice_stopped', {
+            'status': 'stopped',
+            'message': 'Voice session closed'
+        }, room=sid)
+        
+        logger.info(f"✅ [VOICE] Voice session closed for {sid}")
+    
+    except Exception as e:
+        logger.error(f"❌ [VOICE] Error stopping voice session: {e}", exc_info=True)
 
 # Helper function to make data JSON serializable (convert ObjectId, datetime, etc.)
 def make_json_serializable(obj):

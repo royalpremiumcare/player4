@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, X, Send, Loader2 } from 'lucide-react';
+import { Sparkles, X, Send, Loader2, Mic, MicOff } from 'lucide-react';
 
 const ChatWidget = ({ user }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -9,6 +9,17 @@ const ChatWidget = ({ user }) => {
   const [chatHistory, setChatHistory] = useState([]);
   const [usageInfo, setUsageInfo] = useState({ current: 0, limit: -1 }); // AI mesaj kullanım bilgisi
   const messagesEndRef = useRef(null);
+
+  // Voice mode states
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const silenceTimeoutRef = useRef(null);
+  const audioPlayerRef = useRef(null);
 
   // Kullanıcı rolüne göre örnek sorular
   const sampleQuestions = user?.role === 'admin' 
