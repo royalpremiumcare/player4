@@ -8,6 +8,7 @@ from pathlib import Path
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import asyncio
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Literal, Dict
 import uuid
@@ -668,6 +669,16 @@ async def disconnect(sid):
             if voice_service:
                 session_info = _voice_sessions[sid]
                 voice_session = session_info['session']
+                receive_task = session_info.get('receive_task')
+                
+                # Receive loop'u durdur
+                if receive_task and not receive_task.done():
+                    receive_task.cancel()
+                    try:
+                        await receive_task
+                    except asyncio.CancelledError:
+                        pass
+                
                 await voice_service.close_session(voice_session)
                 del _voice_sessions[sid]
                 logger.info(f"🧹 [VOICE] Voice session cleaned up for disconnected client {sid}")
@@ -731,6 +742,37 @@ async def leave_organization(sid, data):
 # Active voice sessions dictionary
 _voice_sessions = {}
 
+async def _voice_receive_loop(sid, voice_session, voice_service):
+    """
+    Background task: AI'dan gelen sesleri sürekli dinle ve client'a gönder
+    """
+    try:
+        logger.info(f"🔊 [VOICE] Receive loop started for {sid}")
+        
+        while sid in _voice_sessions:
+            # AI'dan ses cevabını al
+            response_audio = await voice_service.receive_audio_response(voice_session)
+            
+            if response_audio:
+                # Client'a ses cevabını gönder
+                await sio.emit('voice_response', {
+                    'audio': response_audio
+                }, room=sid)
+                
+                logger.debug(f"🔊 [VOICE] Audio response sent to {sid}")
+            
+            # Küçük bir bekleme (CPU'yu aşırı yüklememek için)
+            await asyncio.sleep(0.01)
+    
+    except asyncio.CancelledError:
+        logger.info(f"🛑 [VOICE] Receive loop cancelled for {sid}")
+        raise
+    except Exception as e:
+        logger.error(f"❌ [VOICE] Receive loop error for {sid}: {e}", exc_info=True)
+        await sio.emit('voice_error', {
+            'message': f'Voice receive error: {str(e)}'
+        }, room=sid)
+
 @sio.on('voice_start')
 async def handle_voice_start(sid, data):
     """
@@ -787,12 +829,18 @@ Yanıtların kısa, net ve doğal olsun. Türkçe konuş.
             system_instruction=system_instruction
         )
         
+        # Background receive loop başlat
+        receive_task = asyncio.create_task(
+            _voice_receive_loop(sid, voice_session, voice_service)
+        )
+        
         # Session'ı kaydet
         _voice_sessions[sid] = {
             'session': voice_session,
             'organization_id': organization_id,
             'user_role': user_role,
-            'username': username
+            'username': username,
+            'receive_task': receive_task  # Task'ı kaydet (cleanup için)
         }
         
         # Client'a başarı bildirimi gönder
@@ -842,23 +890,13 @@ async def handle_voice_audio(sid, data):
         session_info = _voice_sessions[sid]
         voice_session = session_info['session']
         
-        # AI'ya sesi gönder
+        # AI'ya sesi gönder (sadece gönder, receive loop zaten çalışıyor)
         await voice_service.send_audio(voice_session, audio_base64)
         
-        # AI'dan cevabı al
-        response_audio = await voice_service.receive_audio_response(voice_session)
+        logger.debug(f"📤 [VOICE] Audio sent to AI from {sid}")
         
-        if response_audio:
-            # Client'a ses cevabını gönder
-            await sio.emit('voice_response', {
-                'audio': response_audio
-            }, room=sid)
-            
-            logger.debug(f"🔊 [VOICE] Audio response sent to {sid}: {len(response_audio)} chars")
-        else:
-            await sio.emit('voice_error', {
-                'message': 'No response from AI'
-            }, room=sid)
+        # Receive loop otomatik olarak cevabı gönderecek
+        # Burada await etmeye gerek yok
     
     except Exception as e:
         logger.error(f"❌ [VOICE] Error processing audio: {e}", exc_info=True)
@@ -882,6 +920,15 @@ async def handle_voice_stop(sid):
         voice_service = get_voice_ai_service()
         session_info = _voice_sessions[sid]
         voice_session = session_info['session']
+        receive_task = session_info.get('receive_task')
+        
+        # Receive loop'u durdur
+        if receive_task and not receive_task.done():
+            receive_task.cancel()
+            try:
+                await receive_task
+            except asyncio.CancelledError:
+                pass
         
         # Session'ı kapat
         await voice_service.close_session(voice_session)
