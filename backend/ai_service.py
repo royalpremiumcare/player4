@@ -94,6 +94,12 @@ ADIM 2: Customers listesinde müşteriyi ara
 - "Randevu iptal et" → get_dashboard_status ÇAĞIR → ID bul → cancel_appointment ÇAĞIR
 - "Randevu sil" → get_dashboard_status ÇAĞIR → ID bul → delete_appointment ÇAĞIR
 
+👥 PERSONEL BİLGİLERİ (Sadece Admin):
+- "Personeller kimler?" → get_dashboard_status ÇAĞIR → staff_list içinde
+- "En çok randevu alan personel?" → get_dashboard_status ÇAĞIR → staff_performance'tan sırala
+- "X personelinin performansı?" → get_dashboard_status ÇAĞIR → staff_performance'ta ara
+- "Bu ay hangi personel kaç para kazandırdı?" → staff_performance'taki monthly_revenue kullan
+
 ❌ ASLA telefon numarası olmadan randevu oluşturma!
 ❌ ASLA tarihi "19-11-2025" gibi yaz, sadece "2025-11-19" formatı!
 
@@ -437,6 +443,43 @@ async def get_dashboard_status_tool(db, org_id: str, user_role: str, username: s
             }).to_list(10000)
             monthly_revenue = sum(a.get('price', 0) for a in monthly_apts)
             
+            # Personel listesini al
+            staff_list_raw = await db.users.find({
+                "organization_id": org_id,
+                "role": {"$in": ["admin", "staff"]},
+                "status": "active"
+            }).to_list(1000)
+            
+            staff_list = [
+                {
+                    "username": s.get('username'),
+                    "full_name": s.get('full_name', s.get('username')),
+                    "role": s.get('role'),
+                    "phone": s.get('phone', '')
+                }
+                for s in staff_list_raw
+            ]
+            
+            # Personel performansını hesapla (bugün + bu ay)
+            staff_performance = []
+            for staff in staff_list_raw:
+                staff_username = staff.get('username')
+                
+                # Bugün ve yarın randevuları
+                today_staff_apts = [a for a in apts if a.get('staff_member_id') == staff_username]
+                
+                # Aylık randevuları
+                monthly_staff_apts = [a for a in monthly_apts if a.get('staff_member_id') == staff_username]
+                monthly_staff_revenue = sum(a.get('price', 0) for a in monthly_staff_apts)
+                
+                staff_performance.append({
+                    "username": staff_username,
+                    "full_name": staff.get('full_name', staff_username),
+                    "today_appointments": len(today_staff_apts),
+                    "monthly_appointments": len(monthly_staff_apts),
+                    "monthly_revenue": monthly_staff_revenue
+                })
+            
             # Randevuları basitleştir (AI için kolay parse)
             appointments_simple = [
                 {
@@ -465,7 +508,9 @@ async def get_dashboard_status_tool(db, org_id: str, user_role: str, username: s
                     "monthly_appointments": len(monthly_apts),
                     "appointments": appointments_simple,
                     "services": services_list,
-                    "customers": customers_list
+                    "customers": customers_list,
+                    "staff_list": staff_list,
+                    "staff_performance": staff_performance
                 }
             }
     except Exception as e:
