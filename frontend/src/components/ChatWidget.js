@@ -151,9 +151,14 @@ const ChatWidget = ({ user }) => {
       console.log('🎤 Starting voice session...');
       
       const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
-      const socket = io('/', {
+      const socketUrl = window.location.origin;
+      
+      const socket = io(socketUrl, {
+        path: '/api/socket.io',
         auth: { token },
-        transports: ['websocket', 'polling']
+        transports: ['websocket', 'polling'],
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5
       });
 
       socketRef.current = socket;
