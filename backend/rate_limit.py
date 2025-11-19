@@ -101,4 +101,5 @@ LIMITS = {
     'api': "100/minute",
     'stats': "20/minute",
     'sms': "100/hour",
+    'ai_chat': "20/minute",  # AI chatbot için limit
 }

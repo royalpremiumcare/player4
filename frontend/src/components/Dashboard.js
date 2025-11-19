@@ -122,12 +122,14 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
       socketRef.current = socket;
 
       socket.on('connect', () => {
+        console.log('✅ Dashboard: WebSocket connected');
         const authToken = token || localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
         if (authToken) {
           try {
             const payload = JSON.parse(atob(authToken.split('.')[1]));
             const organizationId = payload.org_id;
             if (organizationId) {
+              console.log('📤 Dashboard: Joining organization room:', organizationId);
               socket.emit('join_organization', { organization_id: organizationId });
             }
           } catch (error) {
@@ -136,7 +138,12 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
         }
       });
 
-      socket.on('appointment_created', () => {
+      socket.on('joined_organization', (data) => {
+        console.log('✅ Dashboard: Joined organization room successfully', data);
+      });
+
+      socket.on('appointment_created', (data) => {
+        console.log('🔔 Dashboard: appointment_created event alındı', data);
         if (onRefresh) onRefresh();
         if (userRole === 'staff') loadPersonnelStats();
       });
@@ -253,26 +260,20 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
     .filter(apt => {
       const aptDate = apt.appointment_date || apt.date;
       if (!aptDate) {
-        console.log("⚠️ Yarın filtresi: Randevu tarihi yok:", apt);
         return false;
       }
       if (aptDate !== tomorrow) {
-        console.log(`⚠️ Yarın filtresi: Randevu yarın değil: ${aptDate} !== ${tomorrow}`, apt);
         return false;
       }
       if (userRole === 'staff' && currentStaffUsername) {
         if (apt.staff_member_id !== currentStaffUsername) {
-          console.log(`⚠️ Yarın filtresi: Randevu bu personele ait değil: ${apt.staff_member_id} !== ${currentStaffUsername}`, apt);
           return false;
         }
       }
-      console.log("✅ Yarın filtresi: Randevu yarın ve görüntüleniyor:", apt);
       return true;
     })
     .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
   
-  console.log(`📊 Dashboard Debug: today=${today}, tomorrow=${tomorrow}, total appointments=${appointments.length}, todayAppointments=${todayAppointments.length}, tomorrowAppointments=${tomorrowAppointments.length}`);
-
   // Randevuları saat sırasına göre sırala
   const sortedTodayAppointments = [...todayAppointments].sort((a, b) => 
     a.appointment_time.localeCompare(b.appointment_time)

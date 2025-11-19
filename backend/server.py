@@ -8,7 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict
 import uuid
 from datetime import datetime, timezone, timedelta
 import requests
@@ -34,6 +34,10 @@ from cache import init_redis, invalidate_cache, cache_result
 from rate_limit import initialize_limiter, rate_limit, LIMITS
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
+
+# AI Service Import
+import ai_service
+from ai_service import chat_with_ai
 
 # === LOGGING AYARLARI ===
 logging.basicConfig(
@@ -570,6 +574,9 @@ sio = socketio.AsyncServer(
     engineio_logger=True  # Enable Engine.IO logs for debugging
 )
 socket_app = socketio.ASGIApp(sio, socketio_path='/api/socket.io', other_asgi_app=app)
+
+# Set socketio instance for AI service
+ai_service.set_socketio(sio)
 
 # --- Router prefix'i kaldırıldı ---
 api_router = APIRouter()
@@ -6078,6 +6085,68 @@ async def get_superadmin_organizations(request: Request, current_user: UserInDB 
     except Exception as e:
         logging.error(f"Error in get_superadmin_organizations: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"İşletme listesi alınırken hata oluştu: {str(e)}")
+
+# === AI CHATBOT ENDPOINT ===
+class AIChatRequest(BaseModel):
+    message: str
+    history: Optional[List[Dict]] = []
+
+@api_router.post("/ai/chat")
+@rate_limit(LIMITS["ai_chat"])
+async def ai_chat_endpoint(
+    body: AIChatRequest,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db = Depends(get_db)
+):
+    """
+    AI Chatbot endpoint - Gemini 2.5 Flash ile sohbet
+    
+    Request body:
+    {
+        "message": "Kullanıcının mesajı",
+        "history": [  // Opsiyonel chat history
+            {"role": "user", "parts": [{"text": "..."}]},
+            {"role": "model", "parts": [{"text": "..."}]}
+        ]
+    }
+    """
+    try:
+        # current_user is UserInDB Pydantic model, not dict
+        user_role = getattr(current_user, 'role', 'staff')
+        username = current_user.username
+        organization_id = current_user.organization_id
+        user_full_name = getattr(current_user, 'full_name', username) or username
+        
+        # Organizasyon bilgisini al
+        settings = await db.settings.find_one({"organization_id": organization_id})
+        organization_name = settings.get('company_name', 'İşletme') if settings else 'İşletme'
+        
+        # AI ile sohbet et
+        result = await chat_with_ai(
+            db=db,
+            user_message=body.message,
+            chat_history=body.history,
+            user_role=user_role,
+            username=username,
+            organization_id=organization_id,
+            organization_name=organization_name
+        )
+        
+        if not result.get('success'):
+            raise HTTPException(status_code=500, detail=result.get('message', 'AI hatası'))
+        
+        return {
+            "success": True,
+            "message": result.get('message'),
+            "history": result.get('history', [])
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"AI chat endpoint error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"AI sohbet hatası: {str(e)}")
 
 # --- Router prefix'i buraya taşındı ---
 app.include_router(api_router, prefix="/api")

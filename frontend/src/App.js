@@ -24,6 +24,7 @@ import AuditLogs from "@/components/AuditLogs";
 import HelpCenter from "@/components/HelpCenter";
 import SuperAdmin from "@/components/SuperAdmin";
 import SetupWizard from "@/components/SetupWizard";
+import ChatWidget from "@/components/ChatWidget";
 import { Calendar, Briefcase, DollarSign, SettingsIcon, Users, Upload, LogOut, Moon, Sun, UserCog, FileText, Home, Plus, CreditCard, User, HelpCircle, Package, Bell } from "lucide-react";
 import { useTheme } from "./context/ThemeContext";
 import {
@@ -750,6 +751,15 @@ function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* AI Chatbot Widget - Sadece giriş yapmış kullanıcılara göster */}
+      {token && currentUser && (
+        <ChatWidget user={{
+          username: currentUser.username,
+          full_name: currentUser.full_name,
+          role: userRole
+        }} />
       )}
     </div>
   );
