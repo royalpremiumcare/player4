@@ -62,31 +62,36 @@ class VoiceAIService:
             system_instruction: AI'a verilen sistem talimatları (kullanılmıyor - gelecek versiyonlarda eklenebilir)
         
         Returns:
-            LiveSession object
+            LiveSession context manager
         """
         try:
-            # Gemini 2.0 Flash Live API - sadece model ve config ile bağlan
-            session = self.client.aio.live.connect(
+            # Gemini 2.0 Flash Live API - context manager döner
+            session_cm = self.client.aio.live.connect(
                 model=self.model_name,
                 config=self.config
             )
             
+            # Context manager'ı başlat ve session al
+            session = await session_cm.__aenter__()
+            
             logger.info("✅ Voice AI session created")
-            return session
+            return (session_cm, session)  # Hem context manager hem session dön
         
         except Exception as e:
             logger.error(f"Voice AI session creation error: {e}")
             raise
     
-    async def send_audio(self, session, audio_base64: str) -> None:
+    async def send_audio(self, session_tuple, audio_base64: str) -> None:
         """
         Kullanıcı sesini AI'ya gönder
         
         Args:
-            session: Active LiveSession
+            session_tuple: (context_manager, session) tuple
             audio_base64: Base64 encoded audio data (WebM/Opus format)
         """
         try:
+            _, session = session_tuple  # Tuple'dan session'ı al
+            
             # Base64'ü decode et
             audio_bytes = base64.b64decode(audio_base64)
             
@@ -99,17 +104,18 @@ class VoiceAIService:
             logger.error(f"Send audio error: {e}")
             raise
     
-    async def receive_audio_response(self, session) -> Optional[str]:
+    async def receive_audio_response(self, session_tuple) -> Optional[str]:
         """
         AI'dan gelen ses cevabını al
         
         Args:
-            session: Active LiveSession
+            session_tuple: (context_manager, session) tuple
         
         Returns:
             Base64 encoded audio response (PCM16 24kHz) or None
         """
         try:
+            _, session = session_tuple  # Tuple'dan session'ı al
             audio_chunks = []
             
             # AI'dan gelen response'ları dinle
@@ -138,15 +144,19 @@ class VoiceAIService:
             logger.error(f"Receive audio error: {e}")
             raise
     
-    async def close_session(self, session) -> None:
+    async def close_session(self, session_tuple) -> None:
         """
         Sesli görüşme oturumunu kapat
         
         Args:
-            session: Active LiveSession
+            session_tuple: (context_manager, session) tuple
         """
         try:
-            await session.close()
+            session_cm, session = session_tuple
+            
+            # Context manager'ı düzgün kapat
+            await session_cm.__aexit__(None, None, None)
+            
             logger.info("✅ Voice AI session closed")
         except Exception as e:
             logger.error(f"Close session error: {e}")
