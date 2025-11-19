@@ -1181,7 +1181,7 @@ PLANS = [
             "Sınırsız Müşteri",
             "Online Randevu",
             "İstatistikler",
-            "Akıllı Asistan (Limitsiz*)"
+            "Yapay Zeka Akıllı Asistan (Limitsiz)"
         ],
         "target_audience_tr": "Düzenli ve sabit bir müşteri hacmine sahip, yerleşik işletmeler için."
     },
@@ -1198,7 +1198,7 @@ PLANS = [
             "Sınırsız Müşteri",
             "Online Randevu",
             "İstatistikler",
-            "Akıllı Asistan (Limitsiz*)"
+            "Yapay Zeka Akıllı Asistan (Limitsiz)"
         ],
         "target_audience_tr": "Yoğun tempolu, orta ölçekli salonlar ve merkezler için en popüler seçim."
     },
@@ -1215,7 +1215,7 @@ PLANS = [
             "Sınırsız Müşteri",
             "Online Randevu",
             "İstatistikler",
-            "Akıllı Asistan (Limitsiz*)"
+            "Yapay Zeka Akıllı Asistan (Limitsiz)"
         ],
         "target_audience_tr": "Yüksek hacimli, birden fazla uzman/personel çalıştıran salonlar ve klinikler için."
     },
@@ -1232,7 +1232,7 @@ PLANS = [
             "Sınırsız Müşteri",
             "Online Randevu",
             "İstatistikler",
-            "Akıllı Asistan (Limitsiz*)"
+            "Yapay Zeka Akıllı Asistan (Limitsiz)"
         ],
         "target_audience_tr": "Sektörün en yoğun klinikleri, poliklinikler ve büyük ölçekli işletmeler için tam çözüm."
     }
