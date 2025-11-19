@@ -15,6 +15,7 @@ const ChatWidget = ({ user }) => {
   const [voiceMode, setVoiceMode] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0); // Ses seviyesi (debug)
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const audioContextRef = useRef(null);
@@ -23,7 +24,7 @@ const ChatWidget = ({ user }) => {
   const socketRef = useRef(null);
 
   // Voice config
-  const SILENCE_THRESHOLD = 0.01;
+  const SILENCE_THRESHOLD = 0.005; // Daha hassas (0.01'den 0.005'e düştü)
   const SILENCE_DURATION = 1500;
 
   // Kullanıcı rolüne göre örnek sorular
@@ -319,6 +320,14 @@ const ChatWidget = ({ user }) => {
       
       const average = dataArray.reduce((a, b) => a + b) / bufferLength / 255;
       
+      // Debug: Ses seviyesini UI'da göster
+      setAudioLevel(average);
+      
+      // Debug: Ses seviyesini logla
+      if (average > 0.001) {
+        console.log('🎵 Ses seviyesi:', average.toFixed(4));
+      }
+      
       if (average > SILENCE_THRESHOLD) {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'inactive') {
           console.log('🎤 Voice detected, starting recording...');
@@ -505,9 +514,21 @@ const ChatWidget = ({ user }) => {
         )}
 
         {isListening && (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center space-y-2">
             <div className="bg-red-100 text-red-600 text-xs px-3 py-1 rounded-full animate-pulse">
               🎤 Dinleniyor...
+            </div>
+            {/* Ses seviyesi göstergesi */}
+            <div className="w-full max-w-xs">
+              <div className="bg-gray-200 h-2 rounded-full overflow-hidden">
+                <div 
+                  className="bg-green-500 h-full transition-all duration-100"
+                  style={{ width: `${Math.min(audioLevel * 1000, 100)}%` }}
+                />
+              </div>
+              <div className="text-xs text-gray-500 text-center mt-1">
+                Ses: {(audioLevel * 100).toFixed(2)}% (Eşik: {(SILENCE_THRESHOLD * 100).toFixed(2)}%)
+              </div>
             </div>
           </div>
         )}
