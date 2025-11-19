@@ -265,12 +265,15 @@ const ChatWidget = ({ user }) => {
       audioChunksRef.current = [];
       
       mediaRecorder.ondataavailable = (event) => {
+        console.log('🎵 ondataavailable triggered, size:', event.data.size);
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+          console.log('✅ Audio chunk added, total chunks:', audioChunksRef.current.length);
         }
       };
       
       mediaRecorder.onstop = () => {
+        console.log('🛑 MediaRecorder stopped, chunks:', audioChunksRef.current.length);
         sendAudioToAI();
       };
       
@@ -335,7 +338,9 @@ const ChatWidget = ({ user }) => {
       if (average > SILENCE_THRESHOLD) {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'inactive') {
           console.log('🎤 Voice detected, starting recording...');
-          mediaRecorderRef.current.start();
+          console.log('MediaRecorder state before start:', mediaRecorderRef.current.state);
+          mediaRecorderRef.current.start(100); // Her 100ms'de ondataavailable tetikle
+          console.log('MediaRecorder state after start:', mediaRecorderRef.current.state);
         }
         
         if (silenceTimeoutRef.current) {
