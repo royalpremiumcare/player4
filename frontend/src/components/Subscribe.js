@@ -13,6 +13,24 @@ const Subscribe = ({ onNavigate }) => {
 
   useEffect(() => {
     loadPlans();
+    
+    // URL'de session_id varsa ödeme başarılı mesajı göster
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session_id');
+    
+    if (sessionId) {
+      toast.success("🎉 Ödeme başarılı! Planınız güncellendi.", {
+        duration: 5000,
+      });
+      
+      // URL'den session_id'yi temizle
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // Planı yeniden yükle
+      setTimeout(() => {
+        loadPlans();
+      }, 1000);
+    }
   }, []);
 
   const loadPlans = async () => {
@@ -42,7 +60,7 @@ const Subscribe = ({ onNavigate }) => {
       });
       
       if (response.data && response.data.checkout_url) {
-        // PayTR ödeme sayfasına yönlendir
+        // Stripe Checkout sayfasına yönlendir
         window.location.href = response.data.checkout_url;
       } else {
         toast.error("Ödeme sayfası oluşturulamadı");
@@ -83,22 +101,28 @@ const Subscribe = ({ onNavigate }) => {
         <p className="text-sm text-gray-600 mt-1">Size uygun paketi seçin</p>
       </div>
 
-      {/* İndirim Banner */}
-      <div className="px-4 pb-4">
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl p-6 shadow-lg">
-          <h2 className="text-xl font-bold mb-2">İlk Aya Özel %25 İndirim Fırsatı!</h2>
-          <p className="text-sm text-blue-50">
-            Deneme sürümünüzden ücretli bir plana geçtiğiniz için, seçeceğiniz herhangi bir paketin ilk ay faturası %25 indirimlidir.
-          </p>
+      {/* İndirim Banner - Sadece ilk ay için göster */}
+      {currentPlan && currentPlan.is_first_month && (
+        <div className="px-4 pb-4">
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl p-6 shadow-lg">
+            <h2 className="text-xl font-bold mb-2">🎉 İlk Aya Özel %25 İndirim!</h2>
+            <p className="text-sm text-blue-50">
+              İlk ay özel fırsatı! Seçtiğiniz paketin ilk ay ödemesi <strong>%25 indirimli</strong>.
+            </p>
+            <p className="text-sm text-blue-50 mt-2">
+              <strong>Sonraki aylarda</strong> normal fiyattan otomatik olarak tahsilat yapılacaktır.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Paket Kartları */}
       <div className="px-4 pb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {plans.map((plan) => {
-            const discountedPrice = plan.price_monthly_discounted || Math.round(plan.price_monthly * 0.75);
-            const originalPrice = plan.price_monthly_original || plan.price_monthly;
+            const isFirstMonth = currentPlan && currentPlan.is_first_month;
+            const discountedPrice = isFirstMonth ? Math.round(plan.price_monthly * 0.75) : plan.price_monthly;
+            const originalPrice = plan.price_monthly;
             const isProcessing = processingPlanId === plan.id;
             const isCurrentPlan = currentPlan && currentPlan.plan_id === plan.id;
 
@@ -112,17 +136,29 @@ const Subscribe = ({ onNavigate }) => {
 
                 {/* Fiyat */}
                 <div className="mb-4">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-blue-600">
-                      {discountedPrice.toLocaleString('tr-TR')} ₺
-                    </span>
-                    {originalPrice > discountedPrice && (
-                      <span className="text-gray-500 line-through text-lg">
-                        {originalPrice.toLocaleString('tr-TR')} ₺
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-600 mt-1">/ Aylık</p>
+                  {isFirstMonth ? (
+                    <>
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <span className="text-3xl font-bold text-blue-600">
+                          {discountedPrice.toLocaleString('tr-TR')} ₺
+                        </span>
+                        <span className="text-gray-500 line-through text-lg">
+                          {originalPrice.toLocaleString('tr-TR')} ₺
+                        </span>
+                      </div>
+                      <p className="text-xs text-green-600 font-semibold">İlk ay %25 indirimli</p>
+                      <p className="text-xs text-gray-500 mt-1">Sonraki aylar: {originalPrice.toLocaleString('tr-TR')} ₺/ay</p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-bold text-blue-600">
+                          {originalPrice.toLocaleString('tr-TR')} ₺
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">/ Aylık</p>
+                    </>
+                  )}
                 </div>
 
                 {/* Ana Özellik (Randevu Limiti) */}
@@ -166,5 +202,6 @@ const Subscribe = ({ onNavigate }) => {
 };
 
 export default Subscribe;
+
 
 

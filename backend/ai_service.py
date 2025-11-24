@@ -122,6 +122,19 @@ GÜVENLİK KURALLARI:
     
     base_instruction += """
 SİLME İŞLEMLERİ: Mutlaka onay iste. Örn: "Emin misiniz? X'i silmek istediğinizi onaylıyor musunuz?"
+
+📝 MESAJ FORMATI KURALLARI:
+❌ ASLA ** (yıldız) kullanma! Bold yapma!
+❌ ASLA __kelime__ kullanma!
+✅ Sadece düz metin kullan
+✅ Emoji kullanabilirsin
+✅ Satır sonları kullanabilirsin
+
+YANLIŞ: **Müşteri Adı:** Ahmet
+DOĞRU: Müşteri Adı: Ahmet
+
+YANLIŞ: **Telefon:** 0555...
+DOĞRU: Telefon: 0555...
 """
     
     return base_instruction

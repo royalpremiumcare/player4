@@ -16,7 +16,7 @@ import {
 import { toast } from "sonner";
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL !== undefined ? process.env.REACT_APP_BACKEND_URL : "";
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL !== undefined ? process.env.REACT_APP_BACKEND_URL : window.location.origin;
 
 // Public endpoint için axios instance (token gerektirmez)
 const publicApi = axios.create({
@@ -218,8 +218,10 @@ const LandingPage = () => {
     const fetchPlans = async () => {
       try {
         const response = await publicApi.get('/plans');
+        console.log('API Response:', response.data);
         // Trial hariç tüm planları al (Trial sadece kayıt sonrası)
         const paidPlans = (response.data.plans || []).filter(p => p.id !== 'tier_trial');
+        console.log('Filtered Plans:', paidPlans);
         setPlans(paidPlans);
       } catch (error) {
         console.error('Planlar yüklenemedi:', error);
@@ -935,3 +937,4 @@ const LandingPage = () => {
 };
 
 export default LandingPage;
+console.log("BACKEND_URL:", process.env.REACT_APP_BACKEND_URL);

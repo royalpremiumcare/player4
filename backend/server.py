@@ -74,25 +74,25 @@ load_dotenv(ROOT_DIR / '.env')
 ILETIMERKEZI_API_KEY = os.environ.get('ILETIMERKEZI_API_KEY')
 ILETIMERKEZI_HASH = os.environ.get('ILETIMERKEZI_HASH')
 ILETIMERKEZI_SENDER = os.environ.get('ILETIMERKEZI_SENDER', 'FatihSenyuz') 
-SMS_ENABLED = os.environ.get('SMS_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+SMS_ENABLED = os.environ.get('SMS_ENABLED', 'false').lower() in ('1', 'true', 'yes')
 
-# --- PAYTR ÖDEME AYARLARI ---
-PAYTR_MERCHANT_ID = os.environ.get("PAYTR_MERCHANT_ID")
-PAYTR_MERCHANT_KEY = os.environ.get("PAYTR_MERCHANT_KEY")
-PAYTR_MERCHANT_SALT = os.environ.get("PAYTR_MERCHANT_SALT")
-PAYTR_API_URL = "https://www.paytr.com/odeme/api/get-token"
-# Kullanıcının yönlendirileceği frontend URL'leri (hash routing kullanarak)
-PAYTR_SUCCESS_URL = os.environ.get("PAYTR_SUCCESS_URL", "https://plannapp.co/#/payment-success")
-PAYTR_FAIL_URL = os.environ.get("PAYTR_FAIL_URL", "https://plannapp.co/#/payment-failed")
-# PayTR'nin POST isteği göndereceği webhook URL (PayTR panelinde de ayarlanmalı)
-PAYTR_WEBHOOK_URL = "https://plannapp.co/api/webhook/paytr-success"
+# --- STRIPE ÖDEME AYARLARI ---
+import stripe
 
-# PayTR ortam değişkenlerini kontrol et (sunucu başlangıcında)
-if not all([PAYTR_MERCHANT_ID, PAYTR_MERCHANT_KEY, PAYTR_MERCHANT_SALT]):
-    logger.critical("!!! PAYTR ORTAM DEĞİŞKENLERİ YÜKLENEMEDİ. LÜTFEN .env DOSYASINI KONTROL EDİN !!!")
-    logger.critical(f"MERCHANT_ID={bool(PAYTR_MERCHANT_ID)}, KEY={bool(PAYTR_MERCHANT_KEY)}, SALT={bool(PAYTR_MERCHANT_SALT)}")
-    # Sunucu başlamadan önce hata fırlatma (opsiyonel - yorum satırına alındı)
-    # raise ValueError("PayTR ayarları eksik! Lütfen .env dosyasını kontrol edin.")
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY") 
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
+
+# Stripe'ı yapılandır
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
+    logger.info("✅ Stripe API key configured")
+else:
+    logger.warning("⚠️ STRIPE_SECRET_KEY not configured. Payment features will not work.")
+
+# Success ve Cancel URL'leri
+PAYMENT_SUCCESS_URL = "https://plannapp.co/#/"
+PAYMENT_CANCEL_URL = "https://plannapp.co/#/subscribe"
 
 # --- BREVO EMAIL AYARLARI ---
 BREVO_API_KEY = os.environ.get('BREVO_API_KEY')
@@ -468,14 +468,18 @@ async def lifespan(app: FastAPI):
     
     try:
         logging.info("Step 4: Starting Schedulers...")
-        # SMS Reminder Job - Her 5 dakikada bir
-        scheduler.add_job(
-            check_and_send_reminders, 
-            IntervalTrigger(minutes=5), 
-            id='sms_reminder_job',
-            replace_existing=True,
-            max_instances=1  # Aynı anda sadece bir instance çalışsın
-        )
+        # SMS Reminder Job - Her 5 dakikada bir (sadece SMS_ENABLED=true ise)
+        if SMS_ENABLED:
+            scheduler.add_job(
+                check_and_send_reminders, 
+                IntervalTrigger(minutes=5), 
+                id='sms_reminder_job',
+                replace_existing=True,
+                max_instances=1  # Aynı anda sadece bir instance çalışsın
+            )
+            logging.info("  - SMS Reminder: Enabled (Every 5 minutes)")
+        else:
+            logging.info("  - SMS Reminder: Disabled (SMS_ENABLED=false)")
         
         # Recurring Payment Job - Her gün saat 02:00'de (UTC)
         from apscheduler.triggers.cron import CronTrigger
@@ -489,12 +493,12 @@ async def lifespan(app: FastAPI):
         
         scheduler.start()
         logging.info("Step 4 SUCCESS: Schedulers started")
-        logging.info("  - SMS Reminder: Every 5 minutes")
         logging.info("  - Recurring Payments: Daily at 02:00 UTC")
         
-        # İlk kontrolü hemen yap (test için)
-        import asyncio
-        asyncio.create_task(check_and_send_reminders())
+        # İlk SMS kontrolünü hemen yap (sadece SMS_ENABLED=true ise)
+        if SMS_ENABLED:
+            import asyncio
+            asyncio.create_task(check_and_send_reminders())
     except Exception as e:
         logging.error(f"ERROR during Scheduler initialization: {type(e).__name__}: {str(e)}", exc_info=True)
     
@@ -3073,9 +3077,9 @@ async def create_checkout_session(
             logger.warning(f"Payment endpoint: Yetkisiz erişim denemesi - user={current_user.username}, role={current_user.role}")
             raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
         
-        # PayTR ayarlarını kontrol et
-        if not PAYTR_MERCHANT_ID or not PAYTR_MERCHANT_KEY or not PAYTR_MERCHANT_SALT:
-            logger.error(f"PayTR ayarları eksik! MERCHANT_ID={bool(PAYTR_MERCHANT_ID)}, KEY={bool(PAYTR_MERCHANT_KEY)}, SALT={bool(PAYTR_MERCHANT_SALT)}")
+        # Stripe ayarlarını kontrol et
+        if not STRIPE_SECRET_KEY:
+            logger.error("STRIPE_SECRET_KEY tanımlı değil!")
             raise HTTPException(status_code=500, detail="Ödeme sistemi yapılandırılmamış")
         
         # 1. İstenen planı bul ve fiyatını al
@@ -3105,13 +3109,107 @@ async def create_checkout_session(
             logger.error(f"Geçersiz price_monthly değeri: {price_monthly}, plan_id={plan_request.plan_id}")
             raise HTTPException(status_code=500, detail="Plan fiyatı geçersiz")
         
-        if is_first_month:
-            price_to_pay = price_monthly * 0.75
-        else:
-            price_to_pay = price_monthly
+        # E-posta kontrolü
+        user_email = (current_user.username or "").strip().lower()
+        if not user_email or "@" not in user_email:
+            logger.error(f"Geçersiz email (kullanıcı: {current_user.username}): {user_email}")
+            raise HTTPException(status_code=400, detail="Geçerli bir e-posta adresi gerekli")
         
-        # PayTR'a göndermek için fiyatı kuruş formatına çevir
-        payment_amount_kurus = int(price_to_pay * 100)
+        # Stripe Checkout Session oluştur
+        try:
+            # Price'ı NORMAL fiyattan oluştur (indirim Stripe Coupon ile yapılacak)
+            price_kurus = int(price_monthly * 100)
+            
+            logger.info(f"💰 Fiyat Hesaplama - Plan: {plan_request.plan_id}")
+            logger.info(f"💰 Normal Fiyat: {price_monthly} TL")
+            logger.info(f"💰 is_first_month: {is_first_month}")
+            
+            # Stripe Price objesi oluştur (NORMAL FİYATTAN)
+            price = stripe.Price.create(
+                currency='try',
+                unit_amount=price_kurus,
+                recurring={'interval': 'month'},
+                product_data={
+                    'name': f'PLANN {plan.get("name", "Plan")} Plan'
+                }
+            )
+            
+            # İlk ay indirimi için Coupon oluştur (sadece ilk ödemeye uygulanır)
+            coupon_id = None
+            if is_first_month:
+                try:
+                    coupon = stripe.Coupon.create(
+                        percent_off=25,
+                        duration='once',  # Sadece ilk ödemeye uygulanır
+                        name='İlk Ay %25 İndirim',
+                        id=f'first_month_{current_user.organization_id}_{int(datetime.now(timezone.utc).timestamp())}'
+                    )
+                    coupon_id = coupon.id
+                    logger.info(f"✅ İlk ay indirimi oluşturuldu: {coupon_id}")
+                except stripe.error.StripeError as e:
+                    logger.warning(f"Coupon oluşturma hatası: {e}. İndirim olmadan devam ediliyor.")
+                    coupon_id = None
+            
+            # Checkout Session oluştur
+            session_params = {
+                'payment_method_types': ['card'],
+                'mode': 'subscription',
+                'line_items': [{
+                    'price': price.id,
+                    'quantity': 1,
+                }],
+                'customer_email': user_email,
+                'metadata': {
+                    'user_id': current_user.organization_id,
+                    'plan_id': plan_request.plan_id,
+                    'organization_id': current_user.organization_id,
+                    'is_first_month': str(is_first_month)
+                },
+                'success_url': PAYMENT_SUCCESS_URL + f'?session_id={{CHECKOUT_SESSION_ID}}',
+                'cancel_url': PAYMENT_CANCEL_URL,
+                'billing_address_collection': 'required',
+            }
+            
+            # İlk ay indirimi varsa coupon ekle
+            if coupon_id:
+                session_params['discounts'] = [{'coupon': coupon_id}]
+                logger.info(f"🎁 İlk ay %25 indirim uygulandı. İlk ödeme: {price_monthly * 0.75} TL, Sonraki ödemeler: {price_monthly} TL")
+            else:
+                # Coupon yoksa promotion code'a izin ver
+                session_params['allow_promotion_codes'] = True
+            
+            session = stripe.checkout.Session.create(**session_params)
+            
+            # Payment log oluştur
+            actual_amount = price_monthly * 0.75 if is_first_month else price_monthly
+            await db.payment_logs.insert_one({
+                "session_id": session.id,
+                "organization_id": current_user.organization_id,
+                "user_id": current_user.username,
+                "plan_id": plan_request.plan_id,
+                "status": "pending",
+                "amount": actual_amount,
+                "original_amount": price_monthly,
+                "currency": "TRY",
+                "is_first_month": is_first_month,
+                "discount_applied": is_first_month,
+                "payment_provider": "stripe",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            logger.info(f"Stripe checkout session oluşturuldu: {session.id} - {plan_request.plan_id}")
+            
+            return {
+                "checkout_url": session.url,
+                "session_id": session.id
+            }
+            
+        except stripe.error.StripeError as e:
+            logger.error(f"Stripe hatası: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Ödeme oturumu oluşturulamadı: {str(e)}")
+        except Exception as e:
+            logger.error(f"Stripe checkout session oluşturma hatası: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Sunucu hatası: {str(e)}")
         
         # 3. Kullanıcı IP Adresini Al
         user_ip = request.client.host if request.client else "127.0.0.1"
@@ -3327,57 +3425,56 @@ async def create_checkout_session(
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Sunucu hatası: {str(e)}")
 
-@api_router.post("/webhook/paytr-success")
-async def handle_paytr_webhook(request: Request):
-    """PayTR webhook - Ödeme başarılı olduğunda çağrılır"""
-    # PayTR ayarlarını kontrol et
-    if not PAYTR_MERCHANT_ID or not PAYTR_MERCHANT_KEY or not PAYTR_MERCHANT_SALT:
-        logger.error("PayTR ayarları eksik! .env dosyasını kontrol edin.")
+@api_router.post("/webhook/stripe")
+async def handle_stripe_webhook(request: Request):
+    """Stripe webhook - Ödeme başarılı olduğunda çağrılır"""
+    # Stripe webhook secret kontrolü
+    if not STRIPE_WEBHOOK_SECRET:
+        logger.error("STRIPE_WEBHOOK_SECRET tanımlı değil!")
         return Response(content="ERROR", status_code=500)
     
     try:
-        form_data = await request.form()
+        # Stripe webhook signature doğrulaması
+        payload = await request.body()
+        sig_header = request.headers.get('stripe-signature')
         
-        # 1. PAYTR HASH DOĞRULAMASI (GÜVENLİK - ZORUNLU)
-        hash_from_paytr = form_data.get('hash')
-        merchant_oid = form_data.get('merchant_oid')
-        status = form_data.get('status')
-        total_amount = form_data.get('total_amount')
-        
-        if not hash_from_paytr or not merchant_oid or not status or not total_amount:
-            logger.warning(f"PayTR webhook eksik parametre: hash={hash_from_paytr}, merchant_oid={merchant_oid}, status={status}, total_amount={total_amount}")
+        if not sig_header:
+            logger.warning("Stripe webhook: stripe-signature header eksik")
             return Response(content="ERROR", status_code=400)
         
-        # Bizim oluşturacağımız hash
-        hash_str_to_check = f"{merchant_oid}{PAYTR_MERCHANT_SALT}{status}{total_amount}"
-        our_hash = base64.b64encode(hmac.new(
-            PAYTR_MERCHANT_KEY.encode(),
-            hash_str_to_check.encode(),
-            hashlib.sha256
-        ).digest()).decode()
+        try:
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, STRIPE_WEBHOOK_SECRET
+            )
+        except ValueError as e:
+            logger.error(f"Stripe webhook: Invalid payload - {e}")
+            return Response(content="ERROR", status_code=400)
+        except stripe.error.SignatureVerificationError as e:
+            logger.error(f"Stripe webhook: Invalid signature - {e}")
+            return Response(content="ERROR", status_code=400)
         
-        # HASH'LER UYUŞMUYORSA, BU SAHTE BİR İSTEKTİR!
-        if hash_from_paytr != our_hash:
-            logger.warning(f"PAYTR WEBHOOK HASH HATASI! IP: {request.client.host}, merchant_oid: {merchant_oid}")
-            return Response(content="ERROR", status_code=403)
+        # === SIGNATURE DOĞRULANDI, WEBHOOK GÜVENLİ ===
+        logger.info(f"✅ Stripe webhook event: {event['type']}")
         
-        # === HASH DOĞRULANDI, ÖDEME GÜVENLİ ===
         db = await get_db_from_request(request)
         
-        # 2. ÖDEME DURUMUNU KONTROL ET
-        if status == 'success':
-            # Ödeme başarılı
+        # checkout.session.completed - Ödeme başarılı
+        if event['type'] == 'checkout.session.completed':
+            session = event['data']['object']
+            session_id = session['id']
             
-            # 3. SİPARİŞİ (merchant_oid) BUL VE GÜNCELLE
-            payment_log = await db.payment_logs.find_one({"merchant_oid": merchant_oid})
+            logger.info(f"💳 Ödeme başarılı: session_id={session_id}")
+            
+            # Payment log'u bul
+            payment_log = await db.payment_logs.find_one({"session_id": session_id})
             
             if not payment_log:
-                logger.error(f"Webhook hatası: {merchant_oid} bulunamadı.")
-                return Response(content="OK", status_code=200)  # PayTR'a hata verme, tekrar denemesin
+                logger.error(f"Webhook hatası: session_id={session_id} bulunamadı.")
+                return Response(content="OK", status_code=200)
             
             if payment_log.get("status") == "active":
-                logger.info(f"Webhook: {merchant_oid} zaten işlenmiş.")
-                return Response(content="OK", status_code=200)  # Bu işlemi zaten yapmışız
+                logger.info(f"Webhook: {session_id} zaten işlenmiş.")
+                return Response(content="OK", status_code=200)
             
             # 4. ABONELİĞİ GÜNCELLE (Kritik Mantık)
             plan_id = payment_log.get("plan_id")
@@ -3406,53 +3503,40 @@ async def handle_paytr_webhook(request: Request):
             update_data['trial_start_date'] = None
             update_data['trial_end_date'] = None
             
-            # Recurring payment için kart token bilgilerini kaydet
-            utoken = form_data.get('utoken')
-            ctoken = form_data.get('ctoken')
-            if utoken and ctoken:
-                update_data['payment_utoken'] = utoken
-                update_data['payment_ctoken'] = ctoken
-                update_data['card_saved'] = True
-                update_data['card_saved_at'] = datetime.now(timezone.utc).isoformat()
-                update_data['next_billing_date'] = quota_reset.isoformat()  # Bir sonraki otomatik ödeme tarihi
-                logger.info(f"Kart token bilgileri kaydedildi: organization_id={organization_id}, utoken={utoken[:10]}...")
+            # Stripe subscription bilgilerini kaydet
+            subscription_id = session.get('subscription')
+            customer_id = session.get('customer')
+            
+            if subscription_id:
+                update_data['stripe_subscription_id'] = subscription_id
+                update_data['stripe_customer_id'] = customer_id
+                update_data['next_billing_date'] = quota_reset.isoformat()
+                logger.info(f"Stripe subscription kaydedildi: organization_id={organization_id}, subscription_id={subscription_id}")
             
             await db.organization_plans.update_one(
                 {"organization_id": organization_id},
-                {"$set": update_data}
+                {"$set": update_data},
+                upsert=True
             )
             
             # 5. Ödeme kaydını 'active' yap
             await db.payment_logs.update_one(
-                {"merchant_oid": merchant_oid},
+                {"session_id": session_id},
                 {"$set": {
                     "status": "active",
-                    "completed_at": datetime.now(timezone.utc).isoformat()
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "subscription_id": subscription_id
                 }}
             )
             
-            logger.info(f"PAYTR BAŞARILI: {merchant_oid} - Plan güncellendi. Organization: {organization_id}, Plan: {plan_id}")
-            
-        else:
-            # Ödeme başarısız (status == 'failed')
-            failed_reason = form_data.get('failed_reason_msg', 'Bilinmeyen neden')
-            logger.warning(f"PAYTR BAŞARISIZ: {merchant_oid} - {failed_reason}")
-            
-            db = await get_db_from_request(request)
-            await db.payment_logs.update_one(
-                {"merchant_oid": merchant_oid},
-                {"$set": {
-                    "status": "failed",
-                    "failed_reason": failed_reason,
-                    "completed_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
+            logger.info(f"✅ STRIPE BAŞARILI: {session_id} - Plan güncellendi. Organization: {organization_id}, Plan: {plan_id}")
         
-        # 6. PayTR'a "OK" yanıtı dön (Bu zorunludur)
+        # Diğer event'ler için
+        logger.info(f"ℹ️ Stripe webhook event işlendi: {event['type']}")
         return Response(content="OK", status_code=200)
         
     except Exception as e:
-        logger.error(f"PayTR webhook işleme hatası: {e}", exc_info=True)
+        logger.error(f"Stripe webhook işleme hatası: {e}", exc_info=True)
         return Response(content="ERROR", status_code=500)
 
 @api_router.post("/payments/process-recurring")

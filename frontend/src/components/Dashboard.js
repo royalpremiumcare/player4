@@ -89,6 +89,36 @@ const Dashboard = ({ appointments, stats, userRole, onEditAppointment, onNewAppo
     }
   }, [userRole, loadPersonnelStats]);
 
+  // Stripe ödeme başarılı mesajı
+  useEffect(() => {
+    // Hash routing için URL'den session_id'yi al
+    const hash = window.location.hash;
+    const queryStart = hash.indexOf('?');
+    
+    if (queryStart !== -1) {
+      const queryString = hash.substring(queryStart + 1);
+      const urlParams = new URLSearchParams(queryString);
+      const sessionId = urlParams.get('session_id');
+      
+      if (sessionId) {
+        toast.success("🎉 Ödeme başarılı! Planınız güncellendi.", {
+          duration: 5000,
+        });
+        
+        // URL'den session_id'yi temizle (hash routing için)
+        const cleanHash = hash.substring(0, queryStart);
+        window.history.replaceState({}, document.title, window.location.pathname + cleanHash);
+        
+        // Stats'ı yenile
+        if (onRefresh) {
+          setTimeout(() => {
+            onRefresh();
+          }, 1000);
+        }
+      }
+    }
+  }, [onRefresh]);
+
   useEffect(() => {
     if (settings !== null) {
       loadStaffMembers();
