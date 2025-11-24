@@ -32,15 +32,15 @@ api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(co
 # --- GÜNCELLENMİŞ GÖNDERME FONKSİYONU ---
 def send_welcome_email(user_email: str, user_name: str):
     # 1. GÖNDERİCİ VE ALICI
-    sender = {"name": "PLANN", "email": "noreply@dev.royalpremiumcare.com"}
+    sender = {"name": "PLANN", "email": "noreply@plannapp.co"}
     to = [{"email": user_email, "name": user_name}]
 
     # 2. KONU (Subject) - DAHA PROFESYONEL
     subject = "PLANN'a Hoş Geldiniz! Ücretsiz Deneme Sürümünüz Başladı."
 
     # 3. HTML İÇERİĞİ (TAMAMEN YENİLENDİ)
-    logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
-    dashboard_url = "https://dev.royalpremiumcare.com"
+    logo_url = "https://plannapp.co/api/static/logo.png"
+    dashboard_url = "https://plannapp.co"
 
     html_content = f"""
     <html>

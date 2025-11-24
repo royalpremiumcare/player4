@@ -745,6 +745,7 @@ async def chat_with_ai(
         # Function calling kontrolü
         max_iterations = 5  # Sonsuz döngü önleme
         iteration = 0
+        function_responses = []  # Tüm function response'ları sakla
         
         while iteration < max_iterations:
             # Function call var mı? - Güvenli erişim
@@ -761,7 +762,6 @@ async def chat_with_ai(
                 break
             
             # Function call'ları işle
-            function_responses = []
             for fc in function_calls:
                 func_name = fc.name
                 func_args = dict(fc.args)

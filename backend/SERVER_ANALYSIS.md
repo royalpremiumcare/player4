@@ -1001,7 +1001,7 @@ socket_app = socketio.ASGIApp(sio, socketio_path='/api/socket.io', other_asgi_ap
 - HTML template (logolu)
 - Mesaj: İşletme sahibi personeli davet etti
 - Buton: "Şifremi Belirle ve Giriş Yap"
-- Link: `https://dev.royalpremiumcare.com/setup-password?token={invitation_token}`
+- Link: `https://plannapp.co/setup-password?token={invitation_token}`
 
 #### `send_password_reset_email(...)`
 **Açıklama:** Şifre sıfırlama e-postası

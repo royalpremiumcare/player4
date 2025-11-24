@@ -82,10 +82,10 @@ PAYTR_MERCHANT_KEY = os.environ.get("PAYTR_MERCHANT_KEY")
 PAYTR_MERCHANT_SALT = os.environ.get("PAYTR_MERCHANT_SALT")
 PAYTR_API_URL = "https://www.paytr.com/odeme/api/get-token"
 # Kullanıcının yönlendirileceği frontend URL'leri (hash routing kullanarak)
-PAYTR_SUCCESS_URL = os.environ.get("PAYTR_SUCCESS_URL", "https://dev.royalpremiumcare.com/#/payment-success")
-PAYTR_FAIL_URL = os.environ.get("PAYTR_FAIL_URL", "https://dev.royalpremiumcare.com/#/payment-failed")
+PAYTR_SUCCESS_URL = os.environ.get("PAYTR_SUCCESS_URL", "https://plannapp.co/#/payment-success")
+PAYTR_FAIL_URL = os.environ.get("PAYTR_FAIL_URL", "https://plannapp.co/#/payment-failed")
 # PayTR'nin POST isteği göndereceği webhook URL (PayTR panelinde de ayarlanmalı)
-PAYTR_WEBHOOK_URL = "https://dev.royalpremiumcare.com/api/webhook/paytr-success"
+PAYTR_WEBHOOK_URL = "https://plannapp.co/api/webhook/paytr-success"
 
 # PayTR ortam değişkenlerini kontrol et (sunucu başlangıcında)
 if not all([PAYTR_MERCHANT_ID, PAYTR_MERCHANT_KEY, PAYTR_MERCHANT_SALT]):
@@ -109,7 +109,7 @@ else:
     brevo_api_instance = None
     logging.warning("⚠️ BREVO_API_KEY bulunamadı! E-posta gönderimi devre dışı.")
 
-async def send_email(to_email: str, subject: str, html_content: str, to_name: str = None, sender_name: str = "PLANN", sender_email: str = "noreply@dev.royalpremiumcare.com"):
+async def send_email(to_email: str, subject: str, html_content: str, to_name: str = None, sender_name: str = "PLANN", sender_email: str = "noreply@plannapp.co"):
     """Brevo API ile e-posta gönder - Global helper fonksiyon (async)"""
     global brevo_api_instance
     try:
@@ -1639,8 +1639,8 @@ async def register_user(request: Request, user_in: UserCreate, db = Depends(get_
     
     # Brevo ile hoş geldin e-postası gönder
     try:
-        logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
-        dashboard_url = "https://dev.royalpremiumcare.com"
+        logo_url = "https://plannapp.co/api/static/logo.png"
+        dashboard_url = "https://plannapp.co"
         user_name = user_in.full_name or user_in.username
         subject = "PLANN'a Hoş Geldiniz! Ücretsiz Deneme Sürümünüz Başladı."
         html_content = f"""
@@ -1730,9 +1730,9 @@ async def send_personnel_invitation_email(recipient_email: str, recipient_name: 
     """Personel davet e-postası gönderir."""
     try:
         # Invitation link oluştur (setup-password route'u kullan)
-        invitation_link = f"https://dev.royalpremiumcare.com/setup-password?token={invitation_token}"
+        invitation_link = f"https://plannapp.co/setup-password?token={invitation_token}"
         
-        logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
+        logo_url = "https://plannapp.co/api/static/logo.png"
         subject = "PLANN Davetiyesi: Hesabınızı Oluşturun"
         html_content = f"""
         <html>
@@ -1805,7 +1805,7 @@ async def send_password_reset_email(user_email: str, user_name: str, reset_link:
         
         logging.info(f"📧 [SEND_PASSWORD_RESET_EMAIL] user_email: {user_email}, user_name: {user_name}, reset_link: {reset_link[:50]}...")
         
-        logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
+        logo_url = "https://plannapp.co/api/static/logo.png"
         subject = "PLANN Şifre Sıfırlama Talebi"
         html_content = f"""
         <html>
@@ -1883,7 +1883,7 @@ async def send_contact_notification_email(contact_name: str, contact_phone: str,
         # Admin e-posta adresi - environment variable'dan al veya default kullan
         admin_email = os.environ.get('ADMIN_EMAIL', 'fatihsenyuz12@gmail.com')
         
-        logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
+        logo_url = "https://plannapp.co/api/static/logo.png"
         subject = "PLANN - Yeni İletişim Talebi"
         html_content = f"""
         <html>
@@ -1943,8 +1943,8 @@ async def send_contact_notification_email(contact_name: str, contact_phone: str,
 async def send_contact_confirmation_email(contact_name: str, contact_email: str):
     """Kullanıcıya iletişim talebi onay e-postası gönderir"""
     try:
-        logo_url = "https://dev.royalpremiumcare.com/api/static/logo.png"
-        dashboard_url = "https://dev.royalpremiumcare.com"
+        logo_url = "https://plannapp.co/api/static/logo.png"
+        dashboard_url = "https://plannapp.co"
         subject = "PLANN - Talebiniz Alındı"
         html_content = f"""
         <html>
@@ -2089,7 +2089,7 @@ async def forgot_password(request: Request, forgot_request: ForgotPasswordReques
         })
         
         # Reset link oluştur
-        reset_link = f"https://dev.royalpremiumcare.com/reset-password?token={reset_token}"
+        reset_link = f"https://plannapp.co/reset-password?token={reset_token}"
         
         # E-posta gönder
         user_name = user.full_name or user.username
@@ -4291,7 +4291,7 @@ async def add_staff(request: Request, staff_data: StaffCreate, current_user: Use
         await db.users.insert_one(user_dict)
         
         # E-posta daveti gönder
-        invitation_link = f"https://dev.royalpremiumcare.com/setup-password?token={invitation_token}"
+        invitation_link = f"https://plannapp.co/setup-password?token={invitation_token}"
         email_sent = await send_personnel_invitation_email(
             user_email=staff_data.username,
             user_name=staff_data.full_name,
